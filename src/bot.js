@@ -29,7 +29,7 @@ function createBot({ database } = {}) {
       GatewayIntentBits.GuildInvites,
       GatewayIntentBits.GuildWebhooks,
       GatewayIntentBits.GuildMessageReactions,
-      GatewayIntentBits.GuildEmojisAndStickers,
+      GatewayIntentBits.GuildExpressions,
     ],
     partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User, Partials.Reaction],
     allowedMentions: { parse: ['users', 'roles'] },
