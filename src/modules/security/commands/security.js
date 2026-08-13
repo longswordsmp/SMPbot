@@ -196,7 +196,7 @@ module.exports = {
           .setTitle(`🚨 Security incidents${user ? ` — ${user.tag}` : ''}`)
           .setDescription(`**${rows.length}** most recent incident(s)${all.length > 1 ? ` • page ${idx + 1}/${all.length}` : ''}`);
         for (const row of chunk) {
-          const label = engine.ACTIONS[row.action]?.label ?? row.action;
+          const label = engine.ACTIONS[row.action]?.label ?? (row.action === 'botAdd' ? 'Unauthorized bot addition' : row.action);
           embed.addFields({
             name: `#${row.id} • ${label}`,
             value: truncate(
