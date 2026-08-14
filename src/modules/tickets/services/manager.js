@@ -36,48 +36,91 @@ const PRIORITY_PREFIX_STRINGS = Object.values(PRIORITIES)
 /** Built-in category types. Adding one of these pre-fills sensible defaults. */
 const BUILTIN_TYPES = {
   support: {
-    label: 'Support',
+    label: 'General Support',
     emoji: '🛟',
     description: 'General help & questions',
-    welcome: 'Hi {user}! Describe your issue in as much detail as you can and our staff will be with you shortly.',
+    welcome:
+      'Hi {user}! 🛟\n\nDescribe your issue in as much detail as you can and our staff will be with you shortly. The more information you give us, the faster we can help!',
     pattern: 'support-{num}',
   },
-  report: {
-    label: 'Report',
+  bug: {
+    label: 'Bug Report',
+    emoji: '🐛',
+    description: 'Report a bug or glitch',
+    welcome: [
+      'Thanks for reporting a bug, {user}! 🐛 Please include:',
+      '• **What happened** and what you expected instead',
+      '• **Steps to reproduce** it',
+      '• **Where** it happened (coordinates / channel)',
+      '• Any **screenshots or clips**',
+    ].join('\n'),
+    pattern: 'bug-{num}',
+  },
+  'player-report': {
+    label: 'Player Report',
     emoji: '🚩',
-    description: 'Report a player or an issue',
-    welcome: 'Thanks for the report, {user}. Please include who or what you are reporting and any evidence (screenshots, coordinates, timestamps).',
+    description: 'Report a rule-breaking player',
+    welcome: [
+      'Thanks for the report, {user}. 🚩 Please include:',
+      '• **Who** you are reporting (name/username)',
+      '• **What rule** they broke',
+      '• **Evidence** — screenshots, clips, coordinates, timestamps',
+      '',
+      'False reports may result in punishment, so please be honest.',
+    ].join('\n'),
     pattern: 'report-{num}',
+  },
+  'staff-report': {
+    label: 'Staff Report',
+    emoji: '🛑',
+    description: 'Report a staff member privately',
+    welcome:
+      'Hi {user}. 🛑 This ticket is handled privately by server leadership. Please tell us **which staff member** you are reporting, **what happened**, and include any **evidence**. This will be handled confidentially.',
+    pattern: 'staff-report-{num}',
   },
   partnership: {
     label: 'Partnership',
     emoji: '🤝',
     description: 'Partner with our community',
-    welcome: 'Welcome, {user}! Tell us about your server or community and what kind of partnership you have in mind.',
+    welcome:
+      'Welcome, {user}! 🤝 Tell us about your server or community, your member count, and what kind of partnership you have in mind. A member of our team will review it soon.',
     pattern: 'partner-{num}',
   },
-  appeal: {
-    label: 'Appeal',
-    emoji: '⚖️',
-    description: 'Appeal a punishment',
-    welcome: 'Hi {user}. Please state the punishment you are appealing, when it happened, and why you believe it should be reconsidered.',
-    pattern: 'appeal-{num}',
-  },
   purchase: {
-    label: 'Purchase',
+    label: 'Purchase Support',
     emoji: '🛒',
     description: 'Store & payment help',
-    welcome: 'Hi {user}! Describe your purchase issue and include your transaction ID if you have one. Never share full payment card details.',
+    welcome:
+      'Hi {user}! 🛒 Describe your purchase issue and include your **transaction ID** if you have one. ⚠️ Never share full payment card details with anyone.',
     pattern: 'purchase-{num}',
   },
+  'rule-clarification': {
+    label: 'Rule Clarification',
+    emoji: '❓',
+    description: 'Ask about a rule',
+    welcome:
+      'Hi {user}! ❓ Which rule would you like clarified? Ask away and our staff will explain how it works so you stay on the safe side.',
+    pattern: 'rule-{num}',
+  },
+  appeal: {
+    label: 'Ban Appeal',
+    emoji: '⚖️',
+    description: 'Appeal a punishment',
+    welcome:
+      'Hi {user}. ⚖️ Please state the **punishment** you are appealing, **when** it happened, and **why** you believe it should be reconsidered. Be honest and respectful — it helps your case.',
+    pattern: 'appeal-{num}',
+  },
   staff: {
-    label: 'Staff',
+    label: 'Contact Staff',
     emoji: '🛡️',
     description: 'Contact server leadership privately',
-    welcome: 'Hello {user}! This ticket is only visible to leadership. Tell us what you need.',
+    welcome: 'Hello {user}! 🛡️ This ticket is only visible to leadership. Tell us what you need and we will help.',
     pattern: 'staff-{num}',
   },
 };
+
+/** The default panel SMPbot seeds during setup / templates — the 7 core types. */
+const DEFAULT_PANEL_CATEGORIES = ['bug', 'player-report', 'staff-report', 'support', 'partnership', 'purchase', 'rule-clarification'];
 
 const KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
@@ -295,6 +338,57 @@ async function publishPanel(client, guild, panel, channel) {
     description: `Panel **${panel.name}** published in <#${channel.id}>.`,
   });
   return { ok: true, message };
+}
+
+const DEFAULT_PANEL_TITLE = '🎫 Support Tickets';
+const DEFAULT_PANEL_DESCRIPTION = [
+  'Need help or want to reach the team? Open a ticket below and staff will be with you as soon as possible.',
+  '',
+  'Pick the option that best matches what you need:',
+].join('\n');
+
+/**
+ * Ensure the 7 core ticket categories exist and publish a ready-made support
+ * panel to `channel`. Idempotent: reuses the existing default panel if present,
+ * only creates categories that are missing. Exposed as a service for /setup and
+ * the templates engine so a fresh server gets a working ticket panel instantly.
+ */
+async function seedDefaultPanel(client, guild, channel) {
+  const guildId = guild.id;
+  const existing = listCategories(client, guildId);
+  const haveKeys = new Set(existing.map((c) => c.key));
+  const settings = getSettings(client, guildId);
+  const defaultParentId = client.config.get(guildId, 'tickets', {}).defaultParentId ?? null;
+
+  for (const key of DEFAULT_PANEL_CATEGORIES) {
+    if (haveKeys.has(key)) continue;
+    const preset = BUILTIN_TYPES[key];
+    if (!preset) continue;
+    saveCategory(client, guildId, {
+      key,
+      label: preset.label,
+      emoji: preset.emoji,
+      description: preset.description,
+      parentId: channel.parentId ?? defaultParentId ?? null,
+      staffRoleIds: [],
+      pattern: preset.pattern,
+      welcome: preset.welcome,
+      cooldownSeconds: 60,
+      maxOpen: settings.maxOpenPerUser ?? 3,
+    });
+  }
+
+  // Reuse a previously-seeded default panel so we never stack duplicates.
+  let panel = listPanels(client, guildId).find((p) => p.name === 'default');
+  if (!panel) {
+    panel = createPanel(client, guildId, {
+      name: 'default',
+      title: DEFAULT_PANEL_TITLE,
+      description: DEFAULT_PANEL_DESCRIPTION,
+      categories: DEFAULT_PANEL_CATEGORIES.filter((k) => BUILTIN_TYPES[k]),
+    });
+  }
+  return publishPanel(client, guild, panel, channel);
 }
 
 // ---------------------------------------------------------------------------
@@ -833,6 +927,8 @@ module.exports = {
   DEFAULTS,
   PRIORITIES,
   BUILTIN_TYPES,
+  DEFAULT_PANEL_CATEGORIES,
+  seedDefaultPanel,
   KEY_RE,
   pad,
   normalizeEmoji,

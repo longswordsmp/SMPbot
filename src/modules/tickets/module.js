@@ -79,6 +79,8 @@ module.exports = {
       countOpenForUser: (guildId, userId) => manager.countOpenForUser(client, guildId, userId),
       listCategories: (guildId) => manager.listCategories(client, guildId),
       getTicketByChannel: (guildId, channelId) => manager.getTicketByChannel(client, guildId, channelId),
+      // Seed the 7 core ticket categories and publish a ready-made panel.
+      seedDefaultPanel: (guild, channel) => manager.seedDefaultPanel(client, guild, channel),
     };
   },
 

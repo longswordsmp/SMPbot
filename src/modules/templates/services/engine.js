@@ -456,6 +456,13 @@ async function wireAndSeed(client, guild, tpl, markers, gate = {}) {
       log.debug('templates: connection guide skipped:', err?.message ?? err);
     }
   }
+  if (markers['tickets-panel']) {
+    try {
+      await client.services.tickets?.seedDefaultPanel?.(guild, markers['tickets-panel']);
+    } catch (err) {
+      log.debug('templates: ticket panel skipped:', err?.message ?? err);
+    }
+  }
 
   // Branded "built by SMPbot" welcome message in the general channel.
   if (markers.general) {
