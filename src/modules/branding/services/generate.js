@@ -1,26 +1,27 @@
 'use strict';
 
 /**
- * Pure-canvas branding art generator for SMPbot.
+ * Pure-canvas branding art generator for SMPbot — BlockBench-style renders.
  *
- * Zero copyrighted assets: every asset is composited from primitive shapes —
- * isometric voxel cubes, chunky pixel monograms, neon emblems, gradient
- * shields — using only the colors passed in (the guild's active theme, or the
- * owner's custom colors). Rendering is deterministic for a given seed so a
- * previewed asset can be reproduced exactly on Apply, while "Regenerate" simply
- * bumps the seed to produce a fresh variant.
+ * Zero copyrighted assets: every asset is composited from primitives into
+ * textured isometric Minecraft-style blocks (grass, ore, gem, beacon) with
+ * shaded faces and pixel texel detail, plus a 3D-extruded server name. Only the
+ * colors passed in are used (the guild's active theme, or the owner's custom
+ * colors), so the art always matches the server. Rendering is deterministic for
+ * a given seed, so a previewed asset reproduces exactly on Apply while
+ * "Regenerate" bumps the seed for a fresh variant.
  *
- * Text uses a plain bold sans stack ('bold Npx sans-serif') and never depends
- * on a bundled font file.
+ * Text uses a bold sans stack ('bold Npx sans-serif') rendered with a hard
+ * extrude/shadow to evoke a blocky Minecraft look without a bundled font file.
  */
 
 const { createCanvas } = require('@napi-rs/canvas');
 
 const STYLES = [
-  { id: 'blocks', label: 'Blocks', emoji: '🧊', description: 'Isometric voxel cube cluster' },
-  { id: 'pixel', label: 'Pixel', emoji: '🟪', description: 'Chunky pixel-art server monogram' },
-  { id: 'glow', label: 'Glow', emoji: '💡', description: 'Neon emblem on a dark backdrop' },
-  { id: 'gradient', label: 'Gradient', emoji: '🌈', description: 'Smooth gradient shield emblem' },
+  { id: 'blocks', label: 'Grass Block', emoji: '🟩', description: 'Iconic isometric grass block' },
+  { id: 'pixel', label: 'Ore Block', emoji: '💎', description: 'Stone block studded with themed ore' },
+  { id: 'glow', label: 'Beacon', emoji: '🔆', description: 'Glowing beacon block with a light beam' },
+  { id: 'gradient', label: 'Gem Block', emoji: '💠', description: 'Faceted cut-gem crystal block' },
 ];
 const STYLE_IDS = STYLES.map((s) => s.id);
 const DEFAULT_STYLE = 'blocks';
@@ -28,7 +29,6 @@ const DEFAULT_STYLE = 'blocks';
 function normalizeStyle(id) {
   return STYLE_IDS.includes(id) ? id : DEFAULT_STYLE;
 }
-
 function styleLabel(id) {
   const s = STYLES.find((x) => x.id === id);
   return s ? s.label : STYLES[0].label;
@@ -41,35 +41,29 @@ function styleLabel(id) {
 function clamp8(v) {
   return Math.max(0, Math.min(255, Math.round(v)));
 }
-
 function toRgb(int) {
   const n = Number(int) & 0xffffff;
   return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
 }
-
 function css(int, alpha = 1) {
   const { r, g, b } = toRgb(int);
-  if (alpha >= 1) return `rgb(${r}, ${g}, ${b})`;
-  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
+  return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
 }
-
 function mix(a, b, t) {
   const A = toRgb(a);
   const B = toRgb(b);
-  const r = clamp8(A.r + (B.r - A.r) * t);
-  const g = clamp8(A.g + (B.g - A.g) * t);
-  const bl = clamp8(A.b + (B.b - A.b) * t);
-  return (r << 16) | (g << 8) | bl;
+  return (clamp8(A.r + (B.r - A.r) * t) << 16) | (clamp8(A.g + (B.g - A.g) * t) << 8) | clamp8(A.b + (B.b - A.b) * t);
 }
-
 function lighten(int, t) {
   return mix(int, 0xffffff, t);
 }
-
 function darken(int, t) {
   return mix(int, 0x000000, t);
 }
-
+/** Shade a color: f > 0 lightens, f < 0 darkens. */
+function shade(int, f) {
+  return f >= 0 ? lighten(int, f) : darken(int, -f);
+}
 function normColors(colors) {
   const c = colors || {};
   const primary = Number.isInteger(c.primary) ? c.primary & 0xffffff : 0x2ecc71;
@@ -79,7 +73,7 @@ function normColors(colors) {
 }
 
 // ---------------------------------------------------------------------------
-// Deterministic RNG
+// Deterministic RNG + hashing
 // ---------------------------------------------------------------------------
 
 function hashStr(s) {
@@ -90,7 +84,6 @@ function hashStr(s) {
   }
   return h >>> 0;
 }
-
 function mulberry32(a) {
   let state = a >>> 0;
   return function next() {
@@ -101,59 +94,61 @@ function mulberry32(a) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
+/** Stable per-texel noise in [-1, 1] for a face. */
+function texel(i, j, salt) {
+  const h = hashStr(`${salt}:${i},${j}`);
+  return ((h & 0xffff) / 0xffff) * 2 - 1;
+}
 function initial(name) {
   const s = String(name || '').trim();
-  if (!s) return 'S';
-  const ch = s[0];
-  return ch.toUpperCase();
+  return s ? s[0].toUpperCase() : 'S';
 }
 
 // ---------------------------------------------------------------------------
-// Shared painters
+// Backdrop
 // ---------------------------------------------------------------------------
 
 function drawNoise(ctx, W, H, rng, alpha) {
-  const cell = Math.max(6, Math.round(Math.max(W, H) / 26));
+  const cell = Math.max(6, Math.round(Math.max(W, H) / 30));
   for (let y = 0; y < H; y += cell) {
     for (let x = 0; x < W; x += cell) {
       const r = rng();
-      if (r < 0.55) continue;
-      const a = (r * alpha).toFixed(3);
-      ctx.fillStyle = r > 0.9 ? `rgba(255, 255, 255, ${a})` : `rgba(0, 0, 0, ${a})`;
+      if (r < 0.6) continue;
+      ctx.fillStyle = r > 0.9 ? `rgba(255,255,255,${(r * alpha).toFixed(3)})` : `rgba(0,0,0,${(r * alpha).toFixed(3)})`;
       ctx.fillRect(x, y, cell, cell);
     }
   }
 }
 
 function paintBackdrop(ctx, W, H, colors, style, rng, circle) {
-  if (style === 'glow') {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, css(mix(colors.secondary, 0x0b0d12, 0.72)));
+  const dark = style === 'glow';
+  if (dark) {
+    const g = ctx.createRadialGradient(W / 2, H * 0.42, H * 0.05, W / 2, H / 2, Math.max(W, H) * 0.7);
+    g.addColorStop(0, css(mix(colors.secondary, 0x0b0d16, 0.55)));
     g.addColorStop(1, css(0x05060a));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   } else if (circle) {
-    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.05, W / 2, H / 2, Math.max(W, H) * 0.62);
-    g.addColorStop(0, css(lighten(colors.primary, 0.14)));
+    const g = ctx.createRadialGradient(W / 2, H * 0.4, H * 0.05, W / 2, H / 2, Math.max(W, H) * 0.62);
+    g.addColorStop(0, css(lighten(colors.primary, 0.18)));
     g.addColorStop(0.7, css(colors.primary));
-    g.addColorStop(1, css(darken(colors.secondary, 0.38)));
+    g.addColorStop(1, css(darken(colors.secondary, 0.42)));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   } else {
     const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, css(lighten(colors.primary, 0.2)));
+    g.addColorStop(0, css(lighten(colors.primary, 0.22)));
     g.addColorStop(0.55, css(colors.primary));
-    g.addColorStop(1, css(darken(colors.secondary, 0.3)));
+    g.addColorStop(1, css(darken(colors.secondary, 0.34)));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
 
-  drawNoise(ctx, W, H, rng, style === 'glow' ? 0.07 : 0.05);
+  drawNoise(ctx, W, H, rng, dark ? 0.07 : 0.05);
 
   const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.2, W / 2, H / 2, Math.max(W, H) * 0.78);
-  vg.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  vg.addColorStop(1, style === 'glow' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.32)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, dark ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.34)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 }
@@ -162,7 +157,6 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
 }
-
 function drawFrame(ctx, W, H, colors) {
   const inset = Math.round(Math.min(W, H) * 0.035);
   const r = Math.round(Math.min(W, H) * 0.06);
@@ -173,399 +167,256 @@ function drawFrame(ctx, W, H, colors) {
   ctx.stroke();
   ctx.restore();
 }
-
 function drawAvatarRing(ctx, W, H, colors) {
-  const cx = W / 2;
-  const cy = H / 2;
   const r = Math.min(W, H) * 0.46;
   ctx.save();
-  ctx.lineWidth = Math.min(W, H) * 0.022;
-  ctx.strokeStyle = css(lighten(colors.accent, 0.35), 0.6);
+  ctx.lineWidth = Math.min(W, H) * 0.03;
+  ctx.strokeStyle = css(lighten(colors.accent, 0.35), 0.7);
+  ctx.shadowColor = css(colors.accent, 0.6);
+  ctx.shadowBlur = Math.min(W, H) * 0.03;
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
 
-function hexPath(ctx, cx, cy, r, rot) {
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const a = rot + (i * Math.PI) / 3;
-    const x = cx + Math.cos(a) * r;
-    const y = cy + Math.sin(a) * r;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
-
 // ---------------------------------------------------------------------------
-// Style: blocks (isometric voxel cubes)
+// Isometric textured block — the heart of the BlockBench look
 // ---------------------------------------------------------------------------
 
-function facePoint(T, u, v, a, b) {
-  return { x: T.x + u.x * a + v.x * b, y: T.y + u.y * a + v.y * b };
-}
+/**
+ * Draw one isometric cube centered at (cx, cy) with top-face width `W`.
+ * `faceColor(face, i, j, N)` returns the 0xRRGGBB color of texel (i,j) on the
+ * given face ('top'|'left'|'right'); it is called with pre-shaded bases so
+ * textures only add local variation. N is the texels-per-edge resolution.
+ */
+function isoBlock(ctx, cx, cy, W, faceColor, { N = 8, outline = true } = {}) {
+  const halfW = W / 2;
+  const quarterH = W / 4; // 2:1 isometric
+  const depth = W * 0.52;
 
-function isoCube(ctx, x, y, tw, depth, topColor, edgeColor, rng, studs) {
-  const th = tw * 0.5;
-  const top = lighten(topColor, 0.16);
-  const left = darken(topColor, 0.12);
-  const right = darken(topColor, 0.32);
+  // Top diamond corners.
+  const T = { x: cx, y: cy - quarterH - depth / 2 }; // top vertex
+  const R = { x: cx + halfW, y: T.y + quarterH };
+  const B = { x: cx, y: T.y + quarterH * 2 };
+  const L = { x: cx - halfW, y: T.y + quarterH };
 
-  // left face
-  ctx.beginPath();
-  ctx.moveTo(x - tw / 2, y + th / 2);
-  ctx.lineTo(x, y + th);
-  ctx.lineTo(x, y + th + depth);
-  ctx.lineTo(x - tw / 2, y + th / 2 + depth);
-  ctx.closePath();
-  ctx.fillStyle = css(left);
-  ctx.fill();
-
-  // right face
-  ctx.beginPath();
-  ctx.moveTo(x, y + th);
-  ctx.lineTo(x + tw / 2, y + th / 2);
-  ctx.lineTo(x + tw / 2, y + th / 2 + depth);
-  ctx.lineTo(x, y + th + depth);
-  ctx.closePath();
-  ctx.fillStyle = css(right);
-  ctx.fill();
-
-  // top face
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + tw / 2, y + th / 2);
-  ctx.lineTo(x, y + th);
-  ctx.lineTo(x - tw / 2, y + th / 2);
-  ctx.closePath();
-  ctx.fillStyle = css(top);
-  ctx.fill();
-
-  if (studs) {
-    const T = { x, y };
-    const u = { x: tw / 2, y: th / 2 };
-    const v = { x: -tw / 2, y: th / 2 };
-    const n = 3;
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        const m = 0.06;
-        const A = facePoint(T, u, v, i / n + m, j / n + m);
-        const B = facePoint(T, u, v, (i + 1) / n - m, j / n + m);
-        const C = facePoint(T, u, v, (i + 1) / n - m, (j + 1) / n - m);
-        const D = facePoint(T, u, v, i / n + m, (j + 1) / n - m);
+  const paintFace = (O, U, V, face) => {
+    for (let j = 0; j < N; j++) {
+      for (let i = 0; i < N; i++) {
+        const a0 = i / N;
+        const b0 = j / N;
+        const s = 1 / N;
+        const p = (a, b) => ({ x: O.x + U.x * a + V.x * b, y: O.y + U.y * a + V.y * b });
+        const A = p(a0, b0);
+        const C = p(a0 + s, b0);
+        const D = p(a0 + s, b0 + s);
+        const E = p(a0, b0 + s);
         ctx.beginPath();
         ctx.moveTo(A.x, A.y);
-        ctx.lineTo(B.x, B.y);
         ctx.lineTo(C.x, C.y);
         ctx.lineTo(D.x, D.y);
+        ctx.lineTo(E.x, E.y);
         ctx.closePath();
-        const shade = rng() * 0.18 - 0.05;
-        ctx.fillStyle = css(shade >= 0 ? lighten(top, shade) : darken(top, -shade), 0.92);
+        const color = css(faceColor(face, i, j, N));
+        ctx.fillStyle = color;
         ctx.fill();
+        // Same-color hairline stroke hides antialiased seams between texels.
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
     }
-  }
-
-  // top edge highlight
-  ctx.strokeStyle = css(lighten(edgeColor, 0.4), 0.5);
-  ctx.lineWidth = Math.max(1, tw * 0.012);
-  ctx.beginPath();
-  ctx.moveTo(x - tw / 2, y + th / 2);
-  ctx.lineTo(x, y);
-  ctx.lineTo(x + tw / 2, y + th / 2);
-  ctx.stroke();
-}
-
-function emblemBlocks(ctx, cx, cy, size, colors, name, rng) {
-  ctx.save();
-
-  // ground shadow
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + size * 0.36, size * 0.36, size * 0.12, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const tw = size * 0.62;
-  const depth = tw * 0.62;
-
-  // decorative floating cubes behind
-  const smalls = [
-    { dx: size * 0.34, dy: -size * 0.32, s: 0.22, c: colors.accent },
-    { dx: -size * 0.4, dy: size * 0.02, s: 0.17, c: colors.secondary },
-  ];
-  for (const sc of smalls) {
-    const stw = tw * sc.s;
-    ctx.save();
-    ctx.globalAlpha = 0.9;
-    isoCube(ctx, cx + sc.dx, cy + sc.dy, stw, stw * 0.62, sc.c, colors.accent, rng, false);
-    ctx.restore();
-  }
-
-  // hero cube
-  ctx.save();
-  ctx.shadowColor = css(colors.accent, 0.55);
-  ctx.shadowBlur = size * 0.06;
-  isoCube(ctx, cx, cy - depth * 0.2 - tw * 0.25, tw, depth, colors.primary, colors.accent, rng, true);
-  ctx.restore();
-
-  ctx.restore();
-}
-
-// ---------------------------------------------------------------------------
-// Style: pixel (chunky pixel-art monogram)
-// ---------------------------------------------------------------------------
-
-function drawPixelBlock(ctx, x, y, cell, base) {
-  ctx.fillStyle = css(base);
-  ctx.fillRect(x, y, cell, cell);
-  const b = cell * 0.16;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-  ctx.fillRect(x, y, cell, b);
-  ctx.fillRect(x, y, b, cell);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-  ctx.fillRect(x, y + cell - b, cell, b);
-  ctx.fillRect(x + cell - b, y, b, cell);
-}
-
-function emblemPixel(ctx, cx, cy, size, colors, name, rng) {
-  const grid = 11;
-  const ss = 8;
-  const R = grid * ss;
-  const letter = initial(name);
-
-  const off = createCanvas(R, R);
-  const o = off.getContext('2d');
-  o.fillStyle = '#000';
-  o.fillRect(0, 0, R, R);
-  o.fillStyle = '#fff';
-  o.textAlign = 'center';
-  o.textBaseline = 'middle';
-  let fs = R;
-  o.font = `bold ${fs}px sans-serif`;
-  while (fs > 6 && o.measureText(letter).width > R * 0.78) {
-    fs -= 2;
-    o.font = `bold ${fs}px sans-serif`;
-  }
-  o.fillText(letter, R / 2, R / 2 + R * 0.02);
-  const data = o.getImageData(0, 0, R, R).data;
-
-  const litCell = (gx, gy) => {
-    let sum = 0;
-    let cnt = 0;
-    for (let sy = 1; sy < ss - 1; sy++) {
-      for (let sx = 1; sx < ss - 1; sx++) {
-        const px = gx * ss + sx;
-        const py = gy * ss + sy;
-        sum += data[(py * R + px) * 4];
-        cnt++;
-      }
-    }
-    return sum / cnt > 90;
   };
 
-  const cell = size / grid;
-  const ox = cx - size / 2;
-  const oy = cy - size / 2;
+  // Left face: origin L, U toward B, V downward.
+  paintFace(L, { x: B.x - L.x, y: B.y - L.y }, { x: 0, y: depth }, 'left');
+  // Right face: origin B, U toward R, V downward.
+  paintFace(B, { x: R.x - B.x, y: R.y - B.y }, { x: 0, y: depth }, 'right');
+  // Top face: origin T, U toward R, V toward L.
+  paintFace(T, { x: R.x - T.x, y: R.y - T.y }, { x: L.x - T.x, y: L.y - T.y }, 'top');
 
-  // darkened backing panel so the bright monogram blocks pop against any theme
-  ctx.save();
-  const pad = cell * 0.6;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-  roundRectPath(ctx, ox - pad, oy - pad, size + pad * 2, size + pad * 2, cell * 0.9);
-  ctx.fill();
-  ctx.restore();
-
-  const blockColor = lighten(colors.accent, 0.2);
-
-  ctx.save();
-  ctx.shadowColor = css(colors.accent, 0.55);
-  ctx.shadowBlur = size * 0.045;
-  let any = false;
-  for (let gy = 0; gy < grid; gy++) {
-    for (let gx = 0; gx < grid; gx++) {
-      const x = ox + gx * cell;
-      const y = oy + gy * cell;
-      if (litCell(gx, gy)) {
-        any = true;
-        drawPixelBlock(ctx, x + cell * 0.04, y + cell * 0.04, cell * 0.92, blockColor);
-      } else if (rng() < 0.14) {
-        ctx.save();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = css(lighten(colors.primary, 0.1), 0.14);
-        ctx.fillRect(x + cell * 0.16, y + cell * 0.16, cell * 0.68, cell * 0.68);
-        ctx.restore();
-      }
-    }
-  }
-  ctx.restore();
-
-  // fallback if the font produced nothing (should not happen with system fonts)
-  if (!any) {
+  if (outline) {
     ctx.save();
-    ctx.shadowColor = css(colors.accent, 0.5);
-    ctx.shadowBlur = size * 0.05;
-    for (let k = 0; k < grid; k++) {
-      const x = ox + k * cell;
-      const y = oy + k * cell;
-      drawPixelBlock(ctx, x + cell * 0.04, y + cell * 0.04, cell * 0.92, blockColor);
-      drawPixelBlock(ctx, ox + (grid - 1 - k) * cell + cell * 0.04, y + cell * 0.04, cell * 0.92, lighten(colors.primary, 0.3));
-    }
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1.5, W * 0.012);
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    // outer silhouette
+    ctx.beginPath();
+    ctx.moveTo(T.x, T.y);
+    ctx.lineTo(R.x, R.y);
+    ctx.lineTo(R.x, R.y + depth);
+    ctx.lineTo(B.x, B.y + depth);
+    ctx.lineTo(L.x, L.y + depth);
+    ctx.lineTo(L.x, L.y);
+    ctx.closePath();
+    ctx.stroke();
     ctx.restore();
   }
+  return { T, R, B, L, depth };
 }
 
-// ---------------------------------------------------------------------------
-// Style: glow (neon emblem on dark)
-// ---------------------------------------------------------------------------
-
-function emblemGlow(ctx, cx, cy, size, colors, name, rng) {
-  void rng;
-  const r = size * 0.44;
+function groundShadow(ctx, cx, cy, W) {
   ctx.save();
-  ctx.lineJoin = 'round';
-
-  const passes = [
-    [size * 0.05, size * 0.16, 0.9],
-    [size * 0.022, size * 0.06, 1],
-    [size * 0.01, 0, 1],
-  ];
-  for (const [lw, blur, al] of passes) {
-    hexPath(ctx, cx, cy, r, -Math.PI / 2);
-    ctx.lineWidth = lw;
-    ctx.globalAlpha = al;
-    ctx.strokeStyle = css(lighten(colors.accent, 0.35));
-    ctx.shadowColor = css(colors.accent, 0.95);
-    ctx.shadowBlur = blur;
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  // inner hex
-  ctx.shadowColor = css(colors.primary, 0.8);
-  ctx.shadowBlur = size * 0.05;
-  hexPath(ctx, cx, cy, r * 0.62, -Math.PI / 2);
-  ctx.lineWidth = size * 0.012;
-  ctx.strokeStyle = css(lighten(colors.primary, 0.5), 0.85);
-  ctx.stroke();
-
-  // monogram
-  ctx.shadowColor = css(colors.accent, 0.95);
-  ctx.shadowBlur = size * 0.09;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.font = `bold ${Math.floor(size * 0.34)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(initial(name), cx, cy + size * 0.01);
-
-  ctx.restore();
-}
-
-// ---------------------------------------------------------------------------
-// Style: gradient (smooth gradient shield emblem)
-// ---------------------------------------------------------------------------
-
-function emblemGradient(ctx, cx, cy, size, colors, name, rng) {
-  void rng;
-  const r = size * 0.46;
-  ctx.save();
-
-  hexPath(ctx, cx, cy, r, -Math.PI / 2);
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-  ctx.shadowBlur = size * 0.06;
-  ctx.shadowOffsetY = size * 0.02;
-  const g = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  g.addColorStop(0, css(lighten(colors.accent, 0.25)));
-  g.addColorStop(0.5, css(colors.primary));
-  g.addColorStop(1, css(darken(colors.secondary, 0.2)));
-  ctx.fillStyle = g;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + W * 0.5, W * 0.44, W * 0.14, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowColor = 'transparent';
-  ctx.shadowOffsetY = 0;
-
-  // glossy top highlight
-  ctx.save();
-  hexPath(ctx, cx, cy, r, -Math.PI / 2);
-  ctx.clip();
-  const gg = ctx.createLinearGradient(cx, cy - r, cx, cy + r * 0.2);
-  gg.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
-  gg.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  ctx.fillStyle = gg;
-  ctx.fillRect(cx - r, cy - r, r * 2, r * 1.2);
-  ctx.restore();
-
-  // border
-  hexPath(ctx, cx, cy, r, -Math.PI / 2);
-  ctx.lineWidth = size * 0.022;
-  ctx.strokeStyle = css(lighten(colors.accent, 0.45), 0.85);
-  ctx.stroke();
-
-  // monogram
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.font = `bold ${Math.floor(size * 0.4)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-  ctx.shadowBlur = size * 0.03;
-  ctx.shadowOffsetY = size * 0.01;
-  ctx.fillText(initial(name), cx, cy + size * 0.02);
-
   ctx.restore();
 }
 
-function drawEmblem(style, ctx, cx, cy, size, colors, name, rng) {
-  if (style === 'pixel') return emblemPixel(ctx, cx, cy, size, colors, name, rng);
-  if (style === 'glow') return emblemGlow(ctx, cx, cy, size, colors, name, rng);
-  if (style === 'gradient') return emblemGradient(ctx, cx, cy, size, colors, name, rng);
-  return emblemBlocks(ctx, cx, cy, size, colors, name, rng);
+// ---- per-style face texturers ---------------------------------------------
+
+// Face base shading so the cube reads as 3D under a top-left light.
+const FACE_SHADE = { top: 0.08, left: -0.16, right: -0.36 };
+
+/** Grass block: green top, earthy sides with a grassy overhang row. */
+function grassFace(colors) {
+  const grass = colors.primary;
+  const dirt = darken(mix(colors.primary, 0x6d4a2a, 0.5), 0.02);
+  return (face, i, j, N) => {
+    const isSide = face !== 'top';
+    let base = isSide ? dirt : grass;
+    // grassy overhang on the top rows of the side faces
+    if (isSide && j <= (N >= 8 ? 1 : 0)) base = mix(grass, dirt, j === 0 ? 0.1 : 0.45);
+    const n = texel(i, j, face) * 0.09;
+    return shade(shade(base, FACE_SHADE[face]), n);
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Banner text
-// ---------------------------------------------------------------------------
-
-function drawBannerText(ctx, W, H, name, tagline, colors) {
-  const x = Math.round(H + H * 0.06);
-  const maxW = W - x - Math.round(H * 0.12);
-  const nm = String(name || 'SMP Server');
-  const tag = tagline ? String(tagline) : '';
-
-  let fs = Math.floor(H * 0.27);
-  ctx.font = `bold ${fs}px sans-serif`;
-  while (fs > 18 && ctx.measureText(nm).width > maxW) {
-    fs -= 2;
-    ctx.font = `bold ${fs}px sans-serif`;
-  }
-  ctx.textAlign = 'left';
-
-  const baseY = tag ? H * 0.44 : H * 0.5;
-
-  // accent bar above title
-  ctx.fillStyle = css(lighten(colors.accent, 0.15), 0.95);
-  ctx.fillRect(x, Math.round(baseY - fs * 0.98), Math.round(Math.min(maxW, fs * 5)), Math.max(3, Math.round(H * 0.012)));
-
-  // title
-  ctx.textBaseline = 'alphabetic';
-  ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  ctx.shadowBlur = Math.round(H * 0.03);
-  ctx.shadowOffsetY = Math.round(H * 0.008);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.97)';
-  ctx.fillText(nm, x, Math.round(baseY));
-  ctx.restore();
-
-  if (tag) {
-    let ts = Math.floor(H * 0.1);
-    ctx.font = `bold ${ts}px sans-serif`;
-    while (ts > 10 && ctx.measureText(tag).width > maxW) {
-      ts -= 1;
-      ctx.font = `bold ${ts}px sans-serif`;
+/** Ore block: stony grey with clustered themed gems. */
+function oreFace(colors) {
+  const stone = mix(colors.secondary, 0x8b8f96, 0.62);
+  const gem = colors.accent;
+  return (face, i, j) => {
+    const n = texel(i, j, `s${face}`) * 0.12;
+    let base = shade(stone, FACE_SHADE[face]);
+    // deterministic ore pockets
+    const ore = hashStr(`ore:${face}:${i >> 1},${j >> 1}`) % 7 === 0;
+    if (ore) {
+      const center = (i & 1) === 0 && (j & 1) === 0;
+      base = shade(center ? lighten(gem, 0.28) : gem, FACE_SHADE[face] * 0.5);
     }
-    ctx.fillStyle = css(lighten(colors.accent, 0.35), 0.95);
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(tag, x, Math.round(baseY + ts * 1.5));
+    return shade(base, n);
+  };
+}
+
+/** Gem block: faceted crystal — smooth diagonal gradient per face. */
+function gemFace(colors) {
+  const hi = lighten(colors.accent, 0.35);
+  const lo = darken(colors.primary, 0.1);
+  return (face, i, j, N) => {
+    const t = (i + j) / (2 * (N - 1 || 1));
+    const base = mix(hi, lo, t);
+    const facet = ((i + j) & 1) === 0 ? 0.06 : -0.05; // subtle cut-facet flip
+    return shade(shade(base, FACE_SHADE[face]), facet);
+  };
+}
+
+/** Beacon block: dark obsidian shell with a glowing accent core. */
+function beaconFace(colors) {
+  const shell = darken(mix(colors.secondary, 0x1a1030, 0.5), 0.15);
+  const core = colors.accent;
+  return (face, i, j, N) => {
+    const edge = i === 0 || j === 0 || i === N - 1 || j === N - 1;
+    const mid = i >= N * 0.28 && i <= N * 0.72 && j >= N * 0.28 && j <= N * 0.72;
+    let base = shade(shell, FACE_SHADE[face]);
+    if (mid) base = shade(mix(core, shell, 0.15), FACE_SHADE[face] * 0.4);
+    if (edge) base = darken(base, 0.15);
+    return shade(base, texel(i, j, face) * 0.06);
+  };
+}
+
+// ---- style compositions ----------------------------------------------------
+
+function drawBlockEmblem(style, ctx, cx, cy, size, colors, rng) {
+  groundShadow(ctx, cx, cy, size);
+
+  if (style === 'glow') {
+    // Beacon beam behind the block.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const beam = ctx.createLinearGradient(cx, cy - size * 2.2, cx, cy);
+    beam.addColorStop(0, css(colors.accent, 0));
+    beam.addColorStop(1, css(lighten(colors.accent, 0.2), 0.5));
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(cx - size * 0.16, cy);
+    ctx.lineTo(cx + size * 0.16, cy);
+    ctx.lineTo(cx + size * 0.28, cy - size * 2.2);
+    ctx.lineTo(cx - size * 0.28, cy - size * 2.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
+
+  // A couple of small floating accent blocks behind the hero for depth.
+  const faceOf = { blocks: grassFace, pixel: oreFace, glow: beaconFace, gradient: gemFace }[style] || grassFace;
+  const smalls = [
+    { dx: size * 0.62, dy: -size * 0.28, s: 0.28 },
+    { dx: -size * 0.66, dy: size * 0.06, s: 0.22 },
+  ];
+  for (const sm of smalls) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    isoBlock(ctx, cx + sm.dx, cy + sm.dy, size * sm.s, faceOf(colors), { N: 4, outline: true });
+    ctx.restore();
+  }
+
+  // Hero block with a soft glow.
+  ctx.save();
+  ctx.shadowColor = css(colors.accent, style === 'glow' ? 0.85 : 0.5);
+  ctx.shadowBlur = size * (style === 'glow' ? 0.12 : 0.07);
+  isoBlock(ctx, cx, cy - size * 0.12, size, faceOf(colors), { N: 8, outline: true });
+  ctx.restore();
+
+  void rng;
+}
+
+// ---------------------------------------------------------------------------
+// Blocky 3D title
+// ---------------------------------------------------------------------------
+
+function fitFont(ctx, text, weight, maxW, startPx, minPx) {
+  let fs = startPx;
+  ctx.font = `${weight} ${fs}px sans-serif`;
+  while (fs > minPx && ctx.measureText(text).width > maxW) {
+    fs -= 2;
+    ctx.font = `${weight} ${fs}px sans-serif`;
+  }
+  return fs;
+}
+
+/** Draw extruded, hard-shadowed title text — a blocky Minecraft-ish feel. */
+function drawTitle(ctx, x, y, text, fs, colors, align = 'left') {
+  ctx.save();
+  ctx.textAlign = align;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `bold ${fs}px sans-serif`;
+  // extrude down-right
+  const depth = Math.max(2, Math.round(fs * 0.09));
+  ctx.fillStyle = css(darken(colors.secondary, 0.55));
+  for (let d = depth; d >= 1; d--) ctx.fillText(text, x + d, y + d);
+  // face
+  ctx.fillStyle = 'rgba(255,255,255,0.98)';
+  ctx.fillText(text, x, y);
+  // outline
+  ctx.lineWidth = Math.max(1, fs * 0.03);
+  ctx.strokeStyle = css(darken(colors.secondary, 0.5), 0.9);
+  ctx.strokeText(text, x, y);
+  ctx.restore();
+}
+
+function drawSubtitle(ctx, x, y, text, fs, colors, align = 'left') {
+  ctx.save();
+  ctx.textAlign = align;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `bold ${fs}px sans-serif`;
+  ctx.fillStyle = css(lighten(colors.accent, 0.35), 0.96);
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = fs * 0.25;
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -585,27 +436,43 @@ function renderCanvas({ style, kind, colors, name, tagline, seed }) {
 
   paintBackdrop(ctx, W, H, colors, st, rng, circle);
 
-  let cx;
-  let cy;
-  let size;
   if (banner) {
-    cx = H * 0.5;
-    cy = H * 0.5;
-    size = H * 0.66;
-  } else {
-    cx = W / 2;
-    cy = H / 2;
-    size = circle ? W * 0.56 : W * 0.66;
-  }
+    // Block on the left, name + tagline on the right.
+    const blockCx = H * 0.52;
+    const blockCy = H * 0.5;
+    drawBlockEmblem(st, ctx, blockCx, blockCy, H * 0.34, colors, rng);
 
-  drawEmblem(st, ctx, cx, cy, size, colors, name, rng);
-
-  if (banner) {
-    drawBannerText(ctx, W, H, name, tagline, colors);
+    const tx = Math.round(H + H * 0.04);
+    const maxW = W - tx - Math.round(H * 0.1);
+    const nm = String(name || 'SMP Server');
+    const nmFs = fitFont(ctx, nm, 'bold', maxW, Math.floor(H * 0.26), 20);
+    const baseY = tagline ? H * 0.46 : H * 0.56;
+    // accent bar
+    ctx.fillStyle = css(lighten(colors.accent, 0.15), 0.95);
+    ctx.fillRect(tx, Math.round(baseY - nmFs * 1.02), Math.round(Math.min(maxW, nmFs * 5)), Math.max(3, Math.round(H * 0.012)));
+    drawTitle(ctx, tx, Math.round(baseY), nm, nmFs, colors, 'left');
+    if (tagline) {
+      const tg = String(tagline);
+      const tgFs = fitFont(ctx, tg, 'bold', maxW, Math.floor(H * 0.1), 10);
+      drawSubtitle(ctx, tx, Math.round(baseY + tgFs * 1.7), tg, tgFs, colors, 'left');
+    }
     drawFrame(ctx, W, H, colors);
   } else if (circle) {
+    // Centered block, no text (unreadable at avatar size); ring frame.
+    drawBlockEmblem(st, ctx, W / 2, H * 0.46, W * 0.34, colors, rng);
     drawAvatarRing(ctx, W, H, colors);
   } else {
+    // Logo: hero block up top, server name across the bottom.
+    drawBlockEmblem(st, ctx, W / 2, H * 0.38, W * 0.34, colors, rng);
+    const nm = String(name || 'SMP');
+    const maxW = W * 0.86;
+    const nmFs = fitFont(ctx, nm, 'bold', maxW, Math.floor(H * 0.16), 22);
+    ctx.textAlign = 'center';
+    // accent underline
+    const uw = Math.min(maxW, ctx.measureText(nm).width * 1.06);
+    ctx.fillStyle = css(lighten(colors.accent, 0.15), 0.95);
+    ctx.fillRect((W - uw) / 2, Math.round(H * 0.9), uw, Math.max(3, Math.round(H * 0.012)));
+    drawTitle(ctx, W / 2, Math.round(H * 0.87), nm, nmFs, colors, 'center');
     drawFrame(ctx, W, H, colors);
   }
 
@@ -614,13 +481,6 @@ function renderCanvas({ style, kind, colors, name, tagline, seed }) {
 
 /**
  * Render a single branding asset.
- * @param {object} p
- * @param {string} p.style   one of STYLE_IDS (invalid falls back to 'blocks')
- * @param {'logo'|'banner'|'avatar'|'webhook'} p.kind
- * @param {{primary?:number,secondary?:number,accent?:number}} p.colors
- * @param {string} p.name
- * @param {string} p.tagline
- * @param {number} p.seed
  * @returns {Buffer} PNG buffer
  */
 function generateAsset({ style, kind = 'logo', colors, name = 'SMP', tagline = '', seed = 0 } = {}) {
@@ -654,6 +514,7 @@ module.exports = {
   lighten,
   darken,
   mix,
+  initial,
   generateAsset,
   generateSet,
 };
