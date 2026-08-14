@@ -75,9 +75,14 @@ const ROLE_PERMS = {
 
 // ---- Naming ----------------------------------------------------------------
 
-/** Emoji-prefixed channel name (used identically at build time and on toggle). */
-function decorateName(name, emoji, prefixEmoji) {
-  if (prefixEmoji && emoji) return `${emoji}・${name}`;
+/**
+ * Emoji-decorated channel name (used identically at build time and on toggle).
+ * Uses a box-drawing separator so channels read like `📢│announcements` —
+ * the premium look most large Discord servers use. Emoji prefixing is ON by
+ * default; `/template customize` can turn it off per server.
+ */
+function decorateName(name, emoji, prefixEmoji = true) {
+  if (prefixEmoji && emoji) return `${emoji}│${name}`;
   return name;
 }
 

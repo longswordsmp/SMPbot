@@ -5,6 +5,7 @@ const log = require('../../../core/logger');
 const { truncate, clamp, intToHex } = require('../../../core/utils');
 const definitions = require('./definitions');
 const { decorateName } = require('./definitions/_common');
+const gating = require('./gating');
 const customize = require('./customize');
 
 const { get, counts, list } = definitions;
@@ -186,9 +187,23 @@ async function apply(guild, id, options = {}) {
 
   const mode = options.mode === 'replace' ? 'replace' : 'add';
   const roleOverrides = options.roleOverrides && typeof options.roleOverrides === 'object' ? options.roleOverrides : {};
-  const prefixEmoji = options.prefixEmoji ?? tpl.defaultPrefixEmoji ?? false;
+  const prefixEmoji = options.prefixEmoji ?? tpl.defaultPrefixEmoji ?? true;
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const protectChannelId = options.protectChannelId || null;
+
+  // Verification gating: unverified members see only the verify channel.
+  // On by default; opt out with option gate:false or template gate:false.
+  const memberKey = gating.memberRoleKey(tpl);
+  const gateEnabled = (options.gate ?? tpl.gate ?? true) !== false && Boolean(memberKey);
+  // Work on a shallow copy of the category list so a synthetic verify category
+  // can be injected without mutating the shared template definition.
+  const categories =
+    gateEnabled && !gating.hasVerifyChannel(tpl)
+      ? [gating.verifyCategory(), ...tpl.categories]
+      : tpl.categories;
+  const gateCtx = gateEnabled ? { memberKey } : null;
+  const applyGate = (chDef, entries) =>
+    gateCtx ? gating.gateEntries(entries, { memberKey, kind: gating.kindOf(chDef) }) : entries;
 
   const me = guild.members.me ?? (await guild.members.fetchMe().catch(() => null));
   if (!me || !me.permissions.has(PermissionFlagsBits.ManageChannels) || !me.permissions.has(PermissionFlagsBits.ManageRoles)) {
@@ -204,7 +219,7 @@ async function apply(guild, id, options = {}) {
   roleMap.set('@everyone', guild.roles.everyone);
   const markers = {};
 
-  const total = tpl.roles.length + tpl.categories.reduce((n, c) => n + 1 + c.channels.length, 0);
+  const total = tpl.roles.length + categories.reduce((n, c) => n + 1 + c.channels.length, 0);
   let done = 0;
   let sinceDelay = 0;
   const tick = async () => {
@@ -255,13 +270,18 @@ async function apply(guild, id, options = {}) {
     await orderRoles(guild, me, tpl, roleMap).catch((err) => log.debug('templates: role ordering skipped:', err?.message ?? err));
 
     // 2) Categories + channels.
-    for (const catDef of tpl.categories) {
+    for (const catDef of categories) {
       let category = null;
+      // Gate the category itself so empty/inherited categories stay hidden from
+      // unverified members. A staff category keeps its own hidden overwrites.
+      const catEntries = gateCtx
+        ? gating.gateEntries(catDef.overwrites, { memberKey, kind: gating.isHidden(catDef.overwrites) ? 'staff' : 'normal' })
+        : catDef.overwrites;
       try {
         category = await guild.channels.create({
           name: catDef.name,
           type: ChannelType.GuildCategory,
-          permissionOverwrites: resolveOverwrites(catDef.overwrites, roleMap, staffKeys, guild),
+          permissionOverwrites: resolveOverwrites(catEntries, roleMap, staffKeys, guild),
           reason: `SMPbot template: ${tpl.name}`,
         });
         created.channelIds.push(category.id);
@@ -279,7 +299,7 @@ async function apply(guild, id, options = {}) {
           name: decorateName(chDef.name, chDef.emoji, prefixEmoji),
           type,
           reason: `SMPbot template: ${tpl.name}`,
-          permissionOverwrites: resolveOverwrites(chDef.overwrites, roleMap, staffKeys, guild),
+          permissionOverwrites: resolveOverwrites(applyGate(chDef, chDef.overwrites), roleMap, staffKeys, guild),
         };
         if (category) payload.parent = category.id;
         const textLike = requestedType === 'text' || requestedType === 'announcement' || requestedType === 'forum';
@@ -305,15 +325,43 @@ async function apply(guild, id, options = {}) {
   // Record the application so /template customize can operate precisely.
   customize.record(client, guild, tpl, roleMap, channelMeta, prefixEmoji);
 
-  await wireAndSeed(client, guild, tpl, markers).catch((err) =>
-    log.warn('templates: post-build wiring failed:', err?.message ?? err),
-  );
+  await wireAndSeed(client, guild, tpl, markers, {
+    gateEnabled,
+    memberRole: memberKey ? roleMap.get(memberKey) : null,
+  }).catch((err) => log.warn('templates: post-build wiring failed:', err?.message ?? err));
 
   return summarize(created);
 }
 
+/** Grant the member/verified role to existing human members so a freshly gated
+ * server does not lock out people who are already here. Best-effort + capped. */
+async function grantMemberRoleToExisting(guild, role) {
+  if (!role) return;
+  try {
+    const members = await guild.members.fetch();
+    if (members.size > 400) {
+      log.info(`templates: skipping bulk member-role grant (${members.size} members) — new joiners will verify.`);
+      return;
+    }
+    let n = 0;
+    for (const member of members.values()) {
+      if (member.user.bot || member.id === guild.ownerId) continue;
+      if (member.roles.cache.has(role.id)) continue;
+      try {
+        await member.roles.add(role, 'SMPbot: existing member granted verified role during gating');
+        if (++n % 5 === 0) await sleep(1200);
+      } catch {
+        /* hierarchy / rate — skip */
+      }
+    }
+    log.info(`templates: granted ${role.name} to ${n} existing member(s).`);
+  } catch (err) {
+    log.debug('templates: bulk member-role grant skipped:', err?.message ?? err);
+  }
+}
+
 /** Wire marker channels into other modules' config, and post starter content. */
-async function wireAndSeed(client, guild, tpl, markers) {
+async function wireAndSeed(client, guild, tpl, markers, gate = {}) {
   const gid = guild.id;
 
   // Logging channels.
@@ -341,11 +389,24 @@ async function wireAndSeed(client, guild, tpl, markers) {
     log.warn('templates: rules wiring failed:', err?.message ?? err);
   }
 
-  // Verification channel.
+  // Verification channel + gating role. When gating is on, verifying is what
+  // grants the member role that reveals the server, so wire it end-to-end.
   try {
-    if (markers.verification) client.config.update(gid, 'verification', { channelId: markers.verification.id });
+    if (markers.verification) {
+      const patch = { channelId: markers.verification.id };
+      if (gate.gateEnabled && gate.memberRole) {
+        patch.enabled = true;
+        patch.verifiedRoleId = gate.memberRole.id;
+      }
+      client.config.update(gid, 'verification', patch);
+    }
   } catch (err) {
     log.warn('templates: verification wiring failed:', err?.message ?? err);
+  }
+
+  // Reveal the server to people who are already members before gating.
+  if (gate.gateEnabled && gate.memberRole) {
+    await grantMemberRoleToExisting(guild, gate.memberRole);
   }
 
   // Tickets default parent (the tickets module stores per-category parents in
@@ -444,14 +505,26 @@ function preview(guild, id) {
     .map((r) => `**${r.name}** · \`${intToHex(r.color)}\`${r.staff ? ' · 🛡️ staff' : ''}${r.hoist ? ' · hoisted' : ''}`)
     .join('\n');
   overview.addFields({ name: 'Role ladder (top → bottom)', value: truncate(roleLines, 1024) });
-  if (tpl.defaultPrefixEmoji) {
-    overview.addFields({ name: 'Naming', value: 'Channels use emoji-prefixed names by default.' });
-  }
+
+  const gateEnabled = (tpl.gate ?? true) !== false && Boolean(gating.memberRoleKey(tpl));
+  overview.addFields({
+    name: 'Naming',
+    value: 'Channels use emoji-decorated names like `📢│announcements`.',
+    inline: true,
+  });
+  overview.addFields({
+    name: 'Verification',
+    value: gateEnabled ? '🔒 Gated — new members see only the verify channel until they verify.' : 'Open — all channels visible on join.',
+    inline: true,
+  });
 
   const embeds = [overview];
 
+  // Reflect the verify channel that gating injects when the template lacks one.
+  const cats = gateEnabled && !gating.hasVerifyChannel(tpl) ? [gating.verifyCategory(), ...tpl.categories] : tpl.categories;
+
   // Category tree, chunked so no single embed description exceeds the limit.
-  const blocks = tpl.categories.map((cat) => {
+  const blocks = cats.map((cat) => {
     const header = `**📂 ${cat.name}**${isHidden(cat.overwrites) ? ' 🔒' : ''}`;
     const lines = cat.channels.map((ch) => {
       const glyph = TYPE_GLYPH[ch.type] ?? '#';
