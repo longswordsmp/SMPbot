@@ -1,0 +1,21 @@
+{
+  "name": "smpbot",
+  "version": "1.0.0",
+  "description": "SMPbot — a premium all-in-one Discord bot for Minecraft SMP communities. Built for SMPs. Built for communities. Built for security.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node scripts/deploy-commands.js",
+    "smoke": "node scripts/smoke.js"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.6",
+    "better-sqlite3": "^13.0.3",
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.4.5"
+  }
+}
