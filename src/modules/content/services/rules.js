@@ -340,10 +340,19 @@ function buildRulesEmbeds(client, guild, config) {
   return embeds;
 }
 
+/** Count the characters Discord counts toward the 6000-per-message embed cap. */
+function embedChars(embed) {
+  const d = embed.data ?? {};
+  let n = (d.title?.length ?? 0) + (d.description?.length ?? 0) + (d.footer?.text?.length ?? 0) + (d.author?.name?.length ?? 0);
+  for (const f of d.fields ?? []) n += (f.name?.length ?? 0) + (f.value?.length ?? 0);
+  return n;
+}
+
 /**
  * Publish (or republish) the rules to a channel via the branded webhook
- * pipeline. Deletes the previously published message first, then posts the
- * rules as a single cohesive message, and records the new message id.
+ * pipeline. Deletes the previously published message(s) first, then posts the
+ * rules as a single cohesive message (spilling to as few extra messages as
+ * Discord's limits require), and records the new message ids.
  * Returns { ok, count?, error? }.
  */
 async function publish(client, guild, channel) {
@@ -366,12 +375,32 @@ async function publish(client, guild, channel) {
   // Remove the previously published messages so republishing stays clean.
   await deletePublished(client, guild, config);
 
-  // All embeds go in ONE message (Discord allows up to 10 embeds per message),
-  // so the rules read as a single cohesive block instead of many messages.
-  const embeds = buildRulesEmbeds(client, guild, config).slice(0, 10);
+  // Rules read as one cohesive block: all embeds in a single message when they
+  // fit, spilling into as few extra messages as possible. Discord caps a single
+  // message's COMBINED embed text at 6000 chars (and 10 embeds), so group by a
+  // safe combined budget rather than assuming everything fits in one message.
+  const allEmbeds = buildRulesEmbeds(client, guild, config);
+  const groups = [];
+  let group = [];
+  let groupChars = 0;
+  for (const embed of allEmbeds) {
+    const chars = embedChars(embed);
+    if (group.length && (groupChars + chars > 5800 || group.length >= 10)) {
+      groups.push(group);
+      group = [];
+      groupChars = 0;
+    }
+    group.push(embed);
+    groupChars += chars;
+  }
+  if (group.length) groups.push(group);
+
   const posted = [];
-  const message = await client.hooks.send(channel, { embeds, allowedMentions: { parse: [] } });
-  if (message?.id) posted.push({ channelId: channel.id, messageId: message.id });
+  for (const g of groups) {
+    // eslint-disable-next-line no-await-in-loop
+    const message = await client.hooks.send(channel, { embeds: g, allowedMentions: { parse: [] } });
+    if (message?.id) posted.push({ channelId: channel.id, messageId: message.id });
+  }
 
   if (!posted.length) {
     return { ok: false, error: `I could not post the rules in ${channel}. Check my permissions there.` };

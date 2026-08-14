@@ -732,6 +732,9 @@ STEPS.tickets = {
       if (channelId && seed) {
         const channel = guild.channels.cache.get(channelId) ?? (await guild.channels.fetch(channelId).catch(() => null));
         if (channel) {
+          // Publishing hits the Discord API (can exceed the 3s ack window), so
+          // acknowledge the interaction first, then edit the reply via present().
+          await ackSlow(interaction);
           try {
             const res = await seed(guild, channel);
             w.markDone(client, guild.id, 'tickets');

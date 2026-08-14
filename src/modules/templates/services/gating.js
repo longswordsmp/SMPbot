@@ -44,9 +44,11 @@ function memberRoleKey(tpl) {
   if (flagged) return flagged.key;
   const byKey = tpl.roles.find((r) => r.key === 'member' || r.key === 'verified');
   if (byKey) return byKey.key;
-  // Fall back to the lowest non-staff role, if any.
+  // Fall back to the HIGHEST non-staff role — role ladders list the base member
+  // role above any punishment/dead roles (e.g. survivor above ghost), so the
+  // first non-staff entry is the right one to reveal the server to.
   const nonStaff = tpl.roles.filter((r) => !r.staff);
-  return nonStaff.length ? nonStaff[nonStaff.length - 1].key : null;
+  return nonStaff.length ? nonStaff[0].key : null;
 }
 
 /** Deep-copy overwrite entries so we never mutate the template definition. */

@@ -13,7 +13,7 @@ module.exports = {
     { key: 'admin', name: 'Admin', color: COLOR.admin, hoist: true, mentionable: false, permissions: ROLE_PERMS.admin, staff: true },
     { key: 'mod', name: 'Moderator', color: COLOR.mod, hoist: true, mentionable: true, permissions: ROLE_PERMS.moderator, staff: true },
     { key: 'helper', name: 'Helper', color: COLOR.helper, hoist: true, mentionable: true, permissions: ROLE_PERMS.helper, staff: true },
-    { key: 'survivor', name: 'Survivor', color: COLOR.verified, hoist: true, mentionable: false, permissions: ROLE_PERMS.member, staff: false },
+    { key: 'survivor', name: 'Survivor', color: COLOR.verified, hoist: true, mentionable: false, permissions: ROLE_PERMS.member, staff: false, gate: true },
     { key: 'ghost', name: 'Ghost', color: COLOR.muted, hoist: true, mentionable: false, permissions: ROLE_PERMS.member, staff: false },
   ],
   categories: [

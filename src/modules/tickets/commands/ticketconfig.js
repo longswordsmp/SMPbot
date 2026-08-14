@@ -71,12 +71,15 @@ module.exports = {
               .setDescription('Built-in category type, or custom')
               .setRequired(true)
               .addChoices(
-                { name: '🛟 Support', value: 'support' },
-                { name: '🚩 Report', value: 'report' },
+                { name: '🛟 General Support', value: 'support' },
+                { name: '🐛 Bug Report', value: 'bug' },
+                { name: '🚩 Player Report', value: 'player-report' },
+                { name: '🛑 Staff Report', value: 'staff-report' },
                 { name: '🤝 Partnership', value: 'partnership' },
-                { name: '⚖️ Appeal', value: 'appeal' },
-                { name: '🛒 Purchase', value: 'purchase' },
-                { name: '🛡️ Staff', value: 'staff' },
+                { name: '🛒 Purchase Support', value: 'purchase' },
+                { name: '❓ Rule Clarification', value: 'rule-clarification' },
+                { name: '⚖️ Ban Appeal', value: 'appeal' },
+                { name: '🛡️ Contact Staff', value: 'staff' },
                 { name: '✨ Custom', value: 'custom' },
               ),
           )
