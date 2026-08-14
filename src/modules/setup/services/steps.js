@@ -540,7 +540,10 @@ STEPS.rules = {
       rows.push(channelSelectRow('setup:step:rules:channel', 'Pick a channel to publish rules…'));
     } else {
       embed.setDescription(
-        'Clear rules keep your SMP friendly. You have no rules written yet.\n\nStart with **`/rules setup`** to choose a starter pack (Discord rules, in-game rules, and more), then come back here to publish them — or just mark this step done and do it later.',
+        'Clear rules keep your SMP friendly. You have no rules written yet.\n\nPress **Use recommended rules** to instantly load a full set (Discord, Minecraft, SMP, chat & a punishment ladder) that you can edit any time with **`/rules`** — then publish them below.',
+      );
+      rows.push(
+        new ActionRowBuilder().addComponents(btn('setup:step:rules:seed', 'Use recommended rules', ButtonStyle.Primary, '📜')),
       );
     }
     rows.push(w.controlsRow('rules'));
@@ -550,6 +553,14 @@ STEPS.rules = {
   async handle(ctx, action) {
     const { client, guild, interaction } = ctx;
     const service = client.services?.rules;
+    if (action === 'seed' && interaction.isButton()) {
+      if (!service?.ensureDefaults) return tell(interaction, w.warnPayload(client, guild, 'Rules module not loaded', 'The rules feature is not available right now.'));
+      const added = service.ensureDefaults(guild);
+      return present(
+        interaction,
+        STEPS.rules.view(ctx, added.length ? `✅ Loaded **${added.length}** rule sections. Pick a channel below to publish them.` : 'ℹ️ You already have rules written. Pick a channel below to publish them.'),
+      );
+    }
     if (action === 'channel' && interaction.isChannelSelectMenu()) {
       if (!service) return tell(interaction, w.warnPayload(client, guild, 'Rules module not loaded', 'The rules feature is not available right now.'));
       const channelId = interaction.values[0];
@@ -689,7 +700,7 @@ STEPS.tickets = {
         `**Chosen panel channel:** ${chanTxt}`,
         '',
         loaded
-          ? '1) Pick where the ticket panel should live.\n2) Use **Write default ticket settings** to enable sensible defaults, then publish the panel with **`/ticketpanel`**.'
+          ? '1) Pick where the ticket panel should live.\n2) Press **Create support panel** — SMPbot posts a ready-made panel with Bug Report, Player Report, Staff Report, General Support, Partnership, Purchase & Rule Clarification buttons.'
           : '_The tickets module is not loaded right now. You can still note a panel channel; publish it later once tickets are available._',
       ].join('\n'),
     );
@@ -697,7 +708,7 @@ STEPS.tickets = {
       embeds: [embed],
       components: [
         channelSelectRow('setup:step:tickets:channel', 'Pick the ticket panel channel…'),
-        new ActionRowBuilder().addComponents(btn('setup:step:tickets:defaults', 'Write default ticket settings', ButtonStyle.Primary, '⚙️')),
+        new ActionRowBuilder().addComponents(btn('setup:step:tickets:defaults', 'Create support panel', ButtonStyle.Primary, '🎫')),
         w.controlsRow('tickets'),
       ],
     };
@@ -708,17 +719,41 @@ STEPS.tickets = {
     if (action === 'channel' && interaction.isChannelSelectMenu()) {
       const channelId = interaction.values[0];
       client.config.update(guild.id, 'setup', { ticketsPanelChannel: channelId });
-      return present(interaction, STEPS.tickets.view(ctx, `✅ Noted <#${channelId}> as your ticket panel channel. Publish it there with \`/ticketpanel publish\`.`));
+      return present(interaction, STEPS.tickets.view(ctx, `✅ Noted <#${channelId}> as your ticket panel channel. Press **Create support panel** to publish it.`));
     }
     if (action === 'defaults' && interaction.isButton()) {
       const raw = client.config.getRaw(guild.id, 'tickets') || {};
-      if (Object.keys(raw).length === 0) {
-        client.config.set(guild.id, 'tickets', { ...TICKETS_DEFAULTS });
-        w.markDone(client, guild.id, 'tickets');
-        return present(interaction, STEPS.tickets.view(ctx, '✅ Wrote default ticket settings. Now run `/ticketpanel publish` to post your support panel.'));
+      if (Object.keys(raw).length === 0) client.config.set(guild.id, 'tickets', { ...TICKETS_DEFAULTS });
+
+      // Publish the ready-made 7-category panel to the chosen channel.
+      const setup = client.config.get(guild.id, 'setup', {});
+      const channelId = setup.ticketsPanelChannel;
+      const seed = client.services.tickets?.seedDefaultPanel;
+      if (channelId && seed) {
+        const channel = guild.channels.cache.get(channelId) ?? (await guild.channels.fetch(channelId).catch(() => null));
+        if (channel) {
+          try {
+            const res = await seed(guild, channel);
+            w.markDone(client, guild.id, 'tickets');
+            return present(
+              interaction,
+              STEPS.tickets.view(
+                ctx,
+                res?.ok
+                  ? `✅ Published your support panel in <#${channelId}> with all 7 ticket types. Fine-tune with \`/ticketconfig\`.`
+                  : `⚠️ Saved ticket settings but could not post the panel in <#${channelId}> — check my permissions there, then use \`/ticketpanel publish\`.`,
+              ),
+            );
+          } catch {
+            /* fall through to the generic note */
+          }
+        }
       }
       w.markDone(client, guild.id, 'tickets');
-      return present(interaction, STEPS.tickets.view(ctx, 'ℹ️ Tickets are already configured — fine-tune them with `/ticketconfig`, or publish a panel with `/ticketpanel`.'));
+      return present(
+        interaction,
+        STEPS.tickets.view(ctx, 'ℹ️ Saved default ticket settings. Pick a panel channel above (or run `/ticketpanel publish`) to post your support panel.'),
+      );
     }
     return null;
   },
