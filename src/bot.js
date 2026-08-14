@@ -35,6 +35,10 @@ function createBot({ database } = {}) {
     allowedMentions: { parse: ['users', 'roles'] },
   });
 
+  // 16+ modules attach listeners to shared gateway events (messageCreate,
+  // guildMemberAdd, ...); raise the cap so Node doesn't warn about it.
+  client.setMaxListeners(64);
+
   client.commands = new Collection();
   client.componentHandlers = new Collection();
   client.modules = new Collection();

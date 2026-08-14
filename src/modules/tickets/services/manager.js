@@ -510,11 +510,18 @@ async function openTicket(client, guild, member, category) {
 
   const { id, num } = createTicketRow(client, guild.id, member.id, category.key);
 
+  // Category-specific parent first, then the guild-wide default that
+  // templates/setup write into the 'tickets' config namespace.
   let parentId;
-  if (category.parentId) {
+  const defaultParentId = client.config.get(guild.id, 'tickets', {}).defaultParentId ?? null;
+  for (const candidateId of [category.parentId, defaultParentId]) {
+    if (!candidateId) continue;
     const parent =
-      guild.channels.cache.get(category.parentId) ?? (await guild.channels.fetch(category.parentId).catch(() => null));
-    if (parent?.type === ChannelType.GuildCategory) parentId = parent.id;
+      guild.channels.cache.get(candidateId) ?? (await guild.channels.fetch(candidateId).catch(() => null));
+    if (parent?.type === ChannelType.GuildCategory) {
+      parentId = parent.id;
+      break;
+    }
   }
 
   let channel;

@@ -38,6 +38,10 @@ module.exports = {
       resetUser: (guildId, userId) => tracker.resetUser(client, guildId, userId),
       resetGuild: (guildId) => tracker.resetGuild(client, guildId),
       leaderboard: (guildId, limit) => tracker.leaderboard(client, guildId, limit),
+      getInviter: (guildId, userId) => {
+        const join = tracker.latestJoin(client, guildId, userId);
+        return join?.inviter_id ? { inviterId: join.inviter_id, code: join.code ?? null } : null;
+      },
     };
   },
 };
