@@ -19,9 +19,9 @@ configurable.
 | System | Highlights |
 |---|---|
 | ⚙️ **Interactive setup** | `/setup` — a 20-step guided wizard using buttons, select menus, and modals. No commands to memorize. |
-| 🏗️ **10 server templates** | Classic SMP, Modern Gaming, Clean Minimal, Competitive, Lifesteal, Economy, Factions, Hardcore, Professional Network, and the flagship Ultimate SMP — full categories, channels, roles, permissions, and log wiring, with preview before apply. |
+| 🏗️ **10 server templates** | Classic SMP, Modern Gaming, Clean Minimal, Competitive, Lifesteal, Economy, Factions, Hardcore, Professional Network, and the flagship Ultimate SMP — emoji-decorated channels (`📢│announcements`), roles, permissions, and log wiring, with preview before apply. **Verification gating** by default: unverified members see only the verify channel until they verify. |
 | 🎨 **Theme engine** | 14 built-in Minecraft-inspired themes (Emerald, Diamond, Nether, End, Redstone, Ocean, Midnight, Purple, Gold, Crimson, Forest, Ice, Sunset, Custom) controlling every embed, panel, and webhook message. |
-| 🖼️ **Branding generation** | `/branding setup` generates a custom logo, avatar, banner, and webhook identity in four art styles — Minecraft-inspired, no copyrighted assets. |
+| 🖼️ **Branding generation** | `/branding setup` renders a custom logo, avatar, banner, and webhook identity as textured isometric Minecraft-style blocks (Grass, Ore, Gem, Beacon) with your server name — driven by your theme colors, no copyrighted assets. |
 | 🎫 **Tickets** | Multi-category panels (support, reports, partnerships, appeals, purchases, staff, custom), claiming, priorities, transcripts, statistics, staff activity, cooldowns, per-category permissions. |
 | 🎉 **Giveaways** | Button entry, role/level/account-age/membership requirements, **required invites** with live `3 / 5` progress, blacklists, pause/resume, automatic winner validation with auto-reroll. |
 | 🔗 **Invite tracking** | Legitimate-invite verification, fake-invite detection, leave adjustments, bonus invites, leaderboard, per-user statistics. |
