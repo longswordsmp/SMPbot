@@ -6,11 +6,47 @@ const { truncate, relativeTime, absoluteTime, formatDuration } = require('../../
 const { DEFAULTS } = require('./config');
 const banner = require('./banner');
 
-const PLACEHOLDER_KEYS = ['user', 'username', 'server', 'membercount', 'userid', 'level', 'invites'];
+const PLACEHOLDER_KEYS = ['user', 'username', 'server', 'membercount', 'userid', 'level', 'invites', 'rules', 'ip', 'verify'];
 
 /** The GuildMember / User object a join or leave event handed us. */
 function resolveUser(member) {
   return member?.user ?? member ?? {};
+}
+
+/**
+ * Resolve the channel that each channel-placeholder points to, reading the
+ * config namespaces the relevant modules (and templates) populate.
+ *   {rules}  → rules channel        {ip} → connection-guide channel
+ *   {verify} → verification channel
+ * Returns `<#id>` when known, or a readable fallback phrase otherwise.
+ */
+function channelMentions(client, guildId) {
+  const mention = (id, fallback) => (id ? `<#${id}>` : fallback);
+  let rules = null;
+  let ip = null;
+  let verify = null;
+  try {
+    rules = client.config.get(guildId, 'rules', {}).channelId ?? null;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const mc = client.config.get(guildId, 'minecraft', {});
+    ip = mc.guideChannelId ?? null;
+  } catch {
+    /* ignore */
+  }
+  try {
+    verify = client.config.get(guildId, 'verification', {}).channelId ?? null;
+  } catch {
+    /* ignore */
+  }
+  return {
+    rules: mention(rules, 'the rules channel'),
+    ip: mention(ip, 'the server-info channel'),
+    verify: mention(verify, 'the verification channel'),
+    _ids: { rules, ip, verify },
+  };
 }
 
 /** Read a number from a cross-module service defensively — never throws. */
@@ -47,6 +83,8 @@ function renderMessage(client, guild, member, template) {
         })
       : 0;
 
+  const channels = guildId ? channelMentions(client, guildId) : { rules: 'the rules channel', ip: 'the server-info channel', verify: 'the verification channel' };
+
   const values = {
     user: user.id ? `<@${user.id}>` : 'there',
     username: user.username ?? 'member',
@@ -55,10 +93,16 @@ function renderMessage(client, guild, member, template) {
     userid: user.id ?? '',
     level: String(level),
     invites: String(invites),
+    rules: channels.rules,
+    ip: channels.ip,
+    verify: channels.verify,
   };
 
   // Function replacement avoids `$`-pattern surprises from usernames.
-  return template.replace(/\{(user|username|server|membercount|userid|level|invites)\}/g, (_, key) => String(values[key] ?? ''));
+  return template.replace(
+    /\{(user|username|server|membercount|userid|level|invites|rules|ip|verify)\}/g,
+    (_, key) => String(values[key] ?? ''),
+  );
 }
 
 /** Build the link-button action row for the welcome message (max 5, http(s) only). */
@@ -90,12 +134,28 @@ function buildButtonRows(buttons) {
 async function buildWelcomePayload(client, guild, member, cfg) {
   const user = resolveUser(member);
   const count = guild?.memberCount ?? 0;
+  const channels = channelMentions(client, guild.id);
+
+  // When verification gating is on, a new member can only see the verify
+  // channel — so lead with a clear "verify first" call to action.
+  let verification = {};
+  try {
+    verification = client.config.get(guild.id, 'verification', {});
+  } catch {
+    /* ignore */
+  }
+  const gated = Boolean(verification.enabled && verification.channelId);
+
+  let description = renderMessage(client, guild, member, cfg.description || DEFAULTS.description);
+  if (gated) {
+    description = `🔐 **First, verify in ${channels.verify}** to unlock the rest of the server.\n\n${description}`;
+  }
 
   const embed = client.brand
     .embed(guild)
     .setTitle(truncate(renderMessage(client, guild, member, cfg.title || DEFAULTS.title), 256))
-    .setDescription(truncate(renderMessage(client, guild, member, cfg.description || DEFAULTS.description), 4096))
-    .setFooter({ text: `Member #${count}` });
+    .setDescription(truncate(description, 4096))
+    .setFooter({ text: `You are member #${count} • ${guild?.name ?? ''}`.trim() });
 
   const avatarUrl = user.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? null;
   if (avatarUrl) embed.setThumbnail(avatarUrl);
@@ -131,14 +191,24 @@ async function buildWelcomePayload(client, guild, member, cfg) {
   }
   if (!bannerSet && cfg.imageUrl) embed.setImage(cfg.imageUrl);
 
-  const components = buildButtonRows(cfg.buttons);
+  // Auto channel-link buttons (verify → rules → how-to-join) plus any custom
+  // buttons the owner configured. Discord deep-links (https://discord.com/…)
+  // make channel jumps one click away — a premium onboarding touch.
+  const autoButtons = [];
+  const base = guild?.id ? `https://discord.com/channels/${guild.id}` : null;
+  if (base) {
+    if (gated && channels._ids.verify) autoButtons.push({ label: '✅ Verify Here', url: `${base}/${channels._ids.verify}` });
+    if (channels._ids.rules) autoButtons.push({ label: '📜 Read the Rules', url: `${base}/${channels._ids.rules}` });
+    if (channels._ids.ip) autoButtons.push({ label: '🎮 How to Join', url: `${base}/${channels._ids.ip}` });
+  }
+  const customButtons = Array.isArray(cfg.buttons) ? cfg.buttons : [];
+  const components = buildButtonRows([...autoButtons, ...customButtons]);
   if (files.length) payload.files = files;
   if (components.length) payload.components = components;
 
-  // An embed mention never pings; if the template asks for {user}, ping via content.
-  if (user.id && /\{user\}/.test(`${cfg.title ?? ''} ${cfg.description ?? ''}`)) {
-    payload.content = `<@${user.id}>`;
-  }
+  // Always ping the joining member so the welcome reaches them (embed mentions
+  // never ping on their own).
+  if (user.id) payload.content = `<@${user.id}>`;
 
   return payload;
 }

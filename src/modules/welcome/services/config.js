@@ -14,23 +14,30 @@ const LOG_TYPE = 'members';
 const DEFAULTS = {
   enabled: false, // send a welcome message on join
   channelId: null, // welcome channel
-  title: 'Welcome to {server}!',
-  description: 'Hey {user}, welcome to **{server}**! You are member **#{membercount}**. Make yourself at home. 🎉',
+  title: '👋 Welcome to {server}!',
+  description: [
+    'Hey {user}, welcome to **{server}** — you are our **#{membercount}** member! 🎉',
+    '',
+    '📜 Check out {rules} so you know how everything works.',
+    '🎮 Ready to play? Head to {ip} for the server IP and how to connect.',
+    '',
+    'Have fun and we will see you in-game! 🟩',
+  ].join('\n'),
   serverIcon: true, // show the server icon as the embed author
   imageUrl: null, // custom embed image (URL); ignored when a banner is used
-  banner: false, // generate a canvas welcome banner as the embed image
+  banner: true, // generate a canvas welcome banner as the embed image
   skipBots: true, // do not auto-role bots that join
   autoroles: [], // role ids granted on join
-  buttons: [], // [{ label, url }] link buttons (max 5)
+  buttons: [], // [{ label, url }] extra link buttons (max 5; auto rules/ip/verify buttons added first)
   dm: {
     enabled: false,
-    message: 'Hey {username}, welcome to **{server}**! We are glad to have you here. 🌟',
+    message: 'Hey {username}, welcome to **{server}**! 🌟 Be sure to read the rules and check the server-info channel to get connected. See you in-game!',
   },
   leave: {
     enabled: false,
     channelId: null,
-    title: 'Goodbye 👋',
-    description: '**{username}** just left **{server}**. We are now **{membercount}** members.',
+    title: '👋 Goodbye',
+    description: '**{username}** just left **{server}**. We are now **{membercount}** members. Take care! 🌙',
   },
 };
 
