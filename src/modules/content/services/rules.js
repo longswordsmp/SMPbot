@@ -30,12 +30,16 @@ const STARTER_PACKS = {
         emoji: '💬',
         title: 'Discord Rules',
         body: [
-          '**1.** Treat everyone with respect. No harassment, hate speech, or discrimination.',
-          '**2.** No NSFW, gore, or otherwise inappropriate content anywhere.',
-          '**3.** Keep discussions in the correct channels.',
-          '**4.** No spam, mass mentions, or excessive caps.',
-          '**5.** Do not share personal information — yours or anyone else\'s.',
-          '**6.** Follow the Discord Community Guidelines and Terms of Service at all times.',
+          '**1.** Treat everyone with respect. No harassment, bullying, hate speech, or discrimination of any kind.',
+          '**2.** No NSFW, gore, shock, or otherwise inappropriate content anywhere on the server.',
+          '**3.** Keep every discussion in the correct channel — check the topic if you are unsure.',
+          '**4.** No spam, flooding, mass mentions, excessive caps, or emoji/reaction spam.',
+          '**5.** No advertising or DM self-promotion. Do not solicit members for other servers.',
+          "**6.** Do not share personal information — yours or anyone else's (doxxing = instant ban).",
+          '**7.** No malicious links, IP grabbers, scams, phishing, or crack/cheat links.',
+          '**8.** Use one account. Alt accounts made to evade punishment will be banned.',
+          '**9.** Impersonating staff or other members is not allowed.',
+          '**10.** Follow the [Discord Community Guidelines](https://discord.com/guidelines) and Terms of Service at all times.',
         ].join('\n'),
       },
     ],
@@ -49,11 +53,15 @@ const STARTER_PACKS = {
         emoji: '⛏️',
         title: 'Minecraft Rules',
         body: [
-          '**1.** No hacked clients, x-ray, or unfair mods.',
-          '**2.** No griefing, stealing, or destroying other players\' builds.',
-          '**3.** Keep builds appropriate — no offensive structures.',
-          '**4.** Respect claimed land and player boundaries.',
-          '**5.** Report bugs and exploits to staff instead of abusing them.',
+          '**1.** No hacked clients, x-ray, cheat mods, macros, or unfair advantages of any kind.',
+          "**2.** No griefing, stealing, or destroying other players' builds or items.",
+          '**3.** Keep builds appropriate — no offensive, hateful, or NSFW structures.',
+          '**4.** Respect claimed land and player boundaries. Build a reasonable distance from others.',
+          '**5.** No lag machines, world-corrupting redstone, or intentionally crashing the server.',
+          '**6.** Report bugs and exploits to staff — abusing them is bannable.',
+          '**7.** Duping items, unless explicitly allowed, is not permitted.',
+          '**8.** No AFK machines/farms left running to gain an unfair advantage while offline (server-dependent).',
+          '**9.** Keep chat clean in-game too — the Discord rules apply on the server.',
         ].join('\n'),
       },
     ],
@@ -68,10 +76,13 @@ const STARTER_PACKS = {
         title: 'SMP Guidelines',
         body: [
           '**1.** Be a good neighbor — cooperation makes the SMP thrive.',
-          '**2.** PvP is only allowed by mutual agreement unless in designated zones.',
-          '**3.** Trades and deals should be honored. Scamming is not tolerated.',
-          '**4.** Keep the world clean — light up caves, fill holes, and manage mob farms responsibly.',
-          '**5.** Have fun and help newcomers settle in!',
+          '**2.** PvP is only allowed by mutual agreement unless you are in a designated PvP zone.',
+          '**3.** Trades and deals must be honored. Scamming and backstabbing are not tolerated.',
+          '**4.** No stealing from communal builds, farms, or the spawn area.',
+          '**5.** Keep the world clean — light up caves, fill holes, and leash/limit mob farms responsibly.',
+          '**6.** Respect the spawn area and any community projects.',
+          '**7.** Ask before joining or expanding onto someone else\'s base or town.',
+          '**8.** Have fun, help newcomers settle in, and keep the SMP welcoming for everyone! 🌱',
         ].join('\n'),
       },
     ],
@@ -85,11 +96,13 @@ const STARTER_PACKS = {
         emoji: '🗣️',
         title: 'Chat & Voice Rules',
         body: [
-          '**1.** English in main channels so staff can moderate (use language-specific channels otherwise).',
-          '**2.** No advertising or self-promotion without permission.',
-          '**3.** No mic spam, earrape, or soundboard abuse in voice.',
-          '**4.** Keep drama and arguments out of public channels — open a ticket instead.',
-          '**5.** Staff decisions are final; discuss concerns privately and respectfully.',
+          '**1.** Speak English in main channels so staff can moderate (use language-specific channels otherwise).',
+          '**2.** No advertising or self-promotion without staff permission.',
+          '**3.** No mic spam, earrape, soundboard abuse, or voice-changers used to annoy others.',
+          '**4.** No channel hopping to disrupt voice chats.',
+          '**5.** Keep drama and arguments out of public channels — open a ticket instead.',
+          '**6.** Do not backseat-moderate. Ping staff or open a ticket and let them handle it.',
+          '**7.** Staff decisions are final; discuss concerns privately and respectfully.',
         ].join('\n'),
       },
     ],
@@ -254,6 +267,19 @@ function normalizeEmoji(emoji) {
   return truncate(raw, LIMITS.emoji);
 }
 
+/** The curated default rule set applied when a server has none (templates/setup). */
+const DEFAULT_PACKS = ['discord', 'minecraft', 'smp', 'chat', 'punishment'];
+
+/**
+ * Seed a full, sensible rule set when the guild has no rules yet. Idempotent —
+ * does nothing if any sections already exist. Returns the sections added.
+ */
+function ensureDefaults(client, guildId) {
+  const config = getConfig(client, guildId);
+  if ((config.sections ?? []).length) return [];
+  return applyStarters(client, guildId, DEFAULT_PACKS);
+}
+
 // ---------------------------------------------------------------------------
 // Publishing
 // ---------------------------------------------------------------------------
@@ -264,37 +290,60 @@ function serverName(client, guild) {
   return (mc.serverName && String(mc.serverName).trim()) || brand.name || guild.name;
 }
 
-/** Header + per-section embeds. */
+/**
+ * Build the rules as ONE cohesive message: a single branded embed with the
+ * intro as its description and every rule section as a field, spilling into
+ * additional embeds (all sent in the same message) only when Discord's 6000-
+ * character / 25-field embed limits are reached.
+ */
 function buildRulesEmbeds(client, guild, config) {
   const sections = config.sections ?? [];
   const brand = client.brand.branding(guild.id);
-  const header = client.brand
-    .embed(guild)
-    .setTitle(`📜 ${truncate(serverName(client, guild), 240)} — Server Rules`)
-    .setDescription(
-      [
-        'By being part of this community you agree to follow the rules below.',
-        'Breaking them may lead to warnings, mutes, kicks, or bans.',
-        '',
-        'Please read every section carefully. Ignorance of the rules is not an excuse.',
-      ].join('\n'),
-    );
-  if (brand.bannerUrl) header.setImage(brand.bannerUrl);
+  const name = truncate(serverName(client, guild), 240);
+  const intro = [
+    `Welcome to **${name}**! By being part of this community you agree to follow the rules below.`,
+    'Breaking them may lead to warnings, mutes, kicks, or bans. 🔨',
+    '',
+    '_Please read every section carefully — ignorance of the rules is not an excuse._',
+  ].join('\n');
 
-  const sectionEmbeds = sections.map((s, i) =>
-    client.brand
-      .embed(guild)
-      .setTitle(truncate(`#${i + 1} • ${s.emoji ? `${s.emoji} ` : ''}${s.title}`, 256))
-      .setDescription(truncate(s.body || '_No details provided._', 4000)),
-  );
+  const MAX_FIELDS = 20;
+  const MAX_CHARS = 5600; // headroom under the 6000 hard limit
+  const embeds = [];
 
-  return [header, ...sectionEmbeds];
+  let current = client.brand.embed(guild).setTitle(`📜 ${name} — Server Rules`).setDescription(intro);
+  if (brand.bannerUrl) current.setImage(brand.bannerUrl);
+  let used = `📜 ${name} — Server Rules`.length + intro.length;
+  let fields = 0;
+
+  const startContinuation = () => {
+    embeds.push(current);
+    current = client.brand.embed(guild, { footer: embeds.length === 0 }).setTitle('📜 Server Rules (continued)');
+    used = 24;
+    fields = 0;
+  };
+
+  sections.forEach((s, i) => {
+    const fname = truncate(`${i + 1}.  ${s.emoji ? `${s.emoji} ` : ''}${s.title}`, 256);
+    const fvalue = truncate(s.body && s.body.trim() ? s.body : '_No details provided._', 1024);
+    if (fields >= MAX_FIELDS || used + fname.length + fvalue.length > MAX_CHARS) startContinuation();
+    current.addFields({ name: fname, value: fvalue });
+    used += fname.length + fvalue.length;
+    fields += 1;
+  });
+
+  // A closing note on the last embed.
+  const closing = '✅ Thanks for keeping our community safe and fun. Questions? Open a ticket and staff will help.';
+  if (used + closing.length <= MAX_CHARS) current.addFields({ name: '​', value: closing });
+  embeds.push(current);
+
+  return embeds;
 }
 
 /**
  * Publish (or republish) the rules to a channel via the branded webhook
- * pipeline. Deletes the previously published messages first, then posts a
- * fresh header + one message per section, and records the new message ids.
+ * pipeline. Deletes the previously published message first, then posts the
+ * rules as a single cohesive message, and records the new message id.
  * Returns { ok, count?, error? }.
  */
 async function publish(client, guild, channel) {
@@ -317,14 +366,12 @@ async function publish(client, guild, channel) {
   // Remove the previously published messages so republishing stays clean.
   await deletePublished(client, guild, config);
 
-  const embeds = buildRulesEmbeds(client, guild, config);
+  // All embeds go in ONE message (Discord allows up to 10 embeds per message),
+  // so the rules read as a single cohesive block instead of many messages.
+  const embeds = buildRulesEmbeds(client, guild, config).slice(0, 10);
   const posted = [];
-  for (const embed of embeds) {
-    // One message per embed keeps each section cleanly separated and editable.
-    // eslint-disable-next-line no-await-in-loop
-    const message = await client.hooks.send(channel, { embeds: [embed], allowedMentions: { parse: [] } });
-    if (message?.id) posted.push({ channelId: channel.id, messageId: message.id });
-  }
+  const message = await client.hooks.send(channel, { embeds, allowedMentions: { parse: [] } });
+  if (message?.id) posted.push({ channelId: channel.id, messageId: message.id });
 
   if (!posted.length) {
     return { ok: false, error: `I could not post the rules in ${channel}. Check my permissions there.` };
@@ -376,6 +423,7 @@ module.exports = {
   editSection,
   removeSection,
   applyStarters,
+  ensureDefaults,
   buildRulesEmbeds,
   publish,
 };

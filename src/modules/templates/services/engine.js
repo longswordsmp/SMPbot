@@ -437,6 +437,8 @@ async function wireAndSeed(client, guild, tpl, markers, gate = {}) {
   // Starter content via cross-module services (all optional / defensive).
   if (markers.rules) {
     try {
+      // Seed a full default rule set first so the rules channel is never empty.
+      await client.services.rules?.ensureDefaults?.(guild);
       await client.services.rules?.publish?.(guild, markers.rules);
     } catch (err) {
       log.debug('templates: rules publish skipped:', err?.message ?? err);

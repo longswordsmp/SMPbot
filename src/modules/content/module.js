@@ -48,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_announcements_guild_status ON announcements (guil
     // Cross-module services (accessed defensively by other modules).
     client.services.rules = {
       publish: (guild, channel) => rulesService.publish(client, guild, channel),
+      ensureDefaults: (guild) => rulesService.ensureDefaults(client, guild.id),
     };
     client.services.serverinfo = {
       publishGuide: (guild, channel) => guideService.publishGuide(client, guild, channel),
