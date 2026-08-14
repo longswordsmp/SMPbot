@@ -69,6 +69,23 @@ function createBot({ database } = {}) {
     }
     client.scheduler.start();
     await readyModules(client);
+
+    // Convenience for hosted deploys (Railway, etc.): register slash commands
+    // on boot so no local `npm run deploy` is ever needed.
+    if (process.env.AUTO_DEPLOY_COMMANDS === 'true') {
+      try {
+        const body = [...client.commands.values()].map((c) => c.data.toJSON());
+        if (process.env.DEV_GUILD_ID) {
+          await readyClient.application.commands.set(body, process.env.DEV_GUILD_ID);
+          log.info(`Auto-registered ${body.length} slash command(s) to guild ${process.env.DEV_GUILD_ID}.`);
+        } else {
+          await readyClient.application.commands.set(body);
+          log.info(`Auto-registered ${body.length} slash command(s) globally.`);
+        }
+      } catch (err) {
+        log.error('Automatic slash-command registration failed:', err);
+      }
+    }
   });
 
   client.on(Events.Error, (err) => log.error('Discord client error:', err));
