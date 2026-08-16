@@ -38,6 +38,3 @@ jobs:
           echo "JAR_NAME=$(basename "$jar")"
           echo "JAR_BYTES=$(stat -c%s "$jar")"
           echo "JAR_SHA256=$(sha256sum "$jar" | cut -d' ' -f1)"
-          echo "-----BEGIN JAR BASE64-----"
-          base64 -w 400 "$jar"
-          echo "-----END JAR BASE64-----"
