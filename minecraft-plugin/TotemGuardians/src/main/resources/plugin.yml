@@ -1,0 +1,36 @@
+name: TotemGuardians
+version: '${project.version}'
+main: com.longswordsmp.totemguardians.TotemGuardiansPlugin
+api-version: '1.20'
+author: LongswordSMP
+description: Enchanted totems of undying summon a squad of armoured guardians that fight for you.
+website: https://github.com/longswordsmp/SMPbot
+
+commands:
+  totemguardians:
+    description: Manage TotemGuardians.
+    usage: /totemguardians help
+    aliases: [tg, guardians]
+
+permissions:
+  totemguardians.use:
+    description: Allows a player to summon guardians by popping an enchanted totem.
+    default: true
+  totemguardians.command:
+    description: Access to /totemguardians.
+    default: op
+  totemguardians.give:
+    description: Allows /totemguardians give.
+    default: op
+  totemguardians.summon:
+    description: Allows /totemguardians summon.
+    default: op
+  totemguardians.despawn:
+    description: Allows /totemguardians despawn.
+    default: op
+  totemguardians.reload:
+    description: Allows /totemguardians reload.
+    default: op
+  totemguardians.bypass.cooldown:
+    description: Ignores the summon cooldown.
+    default: op

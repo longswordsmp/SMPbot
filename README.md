@@ -118,6 +118,16 @@ and permissions.
 npm run smoke   # offline load test: modules, schemas, command serialization
 ```
 
+## ⚔️ Minecraft plugin: TotemGuardians
+
+This repository also carries a Paper server plugin at
+[`minecraft-plugin/TotemGuardians`](minecraft-plugin/TotemGuardians). Popping a
+Totem of Undying enchanted with **Unbreaking** summons a squad of five nameless,
+blacked-out guardians in full netherite with shields and maxed swords that fight
+for you for five minutes. Unbreaking I guardians defend; Unbreaking III guardians
+also attack whatever you attack. Build it with `mvn clean package` — see the
+plugin's own README for configuration and commands.
+
 ## 📄 License
 
 MIT

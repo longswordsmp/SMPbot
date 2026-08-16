@@ -11,5 +11,8 @@ data/
 *.log
 npm-debug.log*
 
+# Java plugin build output
+minecraft-plugin/*/target/
+
 # OS noise
 .DS_Store

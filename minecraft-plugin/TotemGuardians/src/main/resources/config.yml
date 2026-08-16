@@ -1,0 +1,229 @@
+# ============================================================================
+#  TotemGuardians
+#  Pop a Totem of Undying that carries the Unbreaking enchantment and a squad
+#  of nameless, blacked-out guardians spawns to fight for you.
+#
+#  The Unbreaking LEVEL on the totem picks the tier below. A totem with a
+#  level that has no exact tier falls back to the highest tier at or below it
+#  (Unbreaking IV with tiers 1-3 defined uses tier 3).
+# ============================================================================
+
+settings:
+  # Worlds where popping an enchanted totem does nothing.
+  disabled-worlds: []
+
+  # Seconds a player must wait between summons. 0 disables the cooldown.
+  cooldown-seconds: 0
+
+  # true  -> popping a second totem despawns the old squad and spawns a new one
+  # false -> popping a second totem while a squad is alive does nothing
+  replace-existing-squad: true
+
+  # Show a "Guardians (5) 4:59" countdown on the owner's action bar.
+  action-bar-timer: true
+
+  # Despawn the squad when the owner dies / logs out.
+  despawn-on-owner-death: true
+  despawn-on-owner-quit: true
+
+  # How long (seconds) a marked enemy stays on the squad's hit list after the
+  # last hit was traded. Refreshed on every new hit.
+  target-memory-seconds: 20
+
+  # Guardians look for marked enemies inside this radius (blocks).
+  threat-search-radius: 32.0
+
+  # Guardians walk back to the owner once they drift further than this.
+  follow-distance: 6.0
+
+  # Guardians that end up further away than this (or in another world) are
+  # teleported back to the owner.
+  leash-radius: 24.0
+
+  # Movement speed multiplier used when walking back to the owner.
+  follow-speed: 1.25
+
+  # How often (ticks) targeting / following is re-evaluated. 10 = twice a second.
+  retarget-interval-ticks: 10
+
+  # Guardians strike back at anything that damages a guardian.
+  retaliate-for-squad: true
+
+  # Guardians never mark creative / spectator players as enemies.
+  ignore-creative-players: true
+
+  # Damage causes guardians are immune to, so they die to players and mobs
+  # rather than to scenery. Remove entries to make them more fragile.
+  immune-damage-causes:
+    - FALL
+    - FIRE
+    - FIRE_TICK
+    - LAVA
+    - HOT_FLOOR
+    - DROWNING
+    - SUFFOCATION
+    - ENTITY_CRAMMING
+    - CONTACT
+    - STARVATION
+
+  # Cosmetics. Any unknown sound/particle name is silently skipped.
+  spawn-sound: entity_wither_spawn
+  despawn-sound: entity_illusioner_mirror_move
+  spawn-particle: [LARGE_SMOKE, SMOKE_LARGE]
+  despawn-particle: [LARGE_SMOKE, SMOKE_LARGE]
+
+# The totem handed out by /totemguardians give
+totem-item:
+  name: "&8&lGuardian Totem &7(&cUnbreaking {level}&7)"
+  lore:
+    - "&7Pop this totem to summon &c{count} guardians&7."
+    - "&7They fight for you for &f{duration}&7."
+    - ""
+    - "&8{targeting}"
+
+tiers:
+  # ---------------------------------------------------------------- Unbreaking I
+  '1':
+    display-name: "Guardian"
+    count: 5
+    duration-seconds: 300
+    # DEFEND -> guardians only attack whatever attacks the owner (or a guardian)
+    # ASSIST -> guardians also attack whatever the owner attacks
+    targeting: DEFEND
+    # A wither skeleton in full netherite reads as a solid black armoured
+    # humanoid with no nameplate. ZOMBIE / SKELETON / PIGLIN_BRUTE / VINDICATOR
+    # / HUSK all work too.
+    entity-type: WITHER_SKELETON
+    # Optional body scale, 1.21+ only. Ignored on older servers.
+    scale: 1.0
+    equipment:
+      helmet:
+        material: NETHERITE_HELMET
+        enchantments: { protection: 4, unbreaking: 3 }
+      chestplate:
+        material: NETHERITE_CHESTPLATE
+        enchantments: { protection: 4, unbreaking: 3 }
+      leggings:
+        material: NETHERITE_LEGGINGS
+        enchantments: { protection: 4, unbreaking: 3 }
+      boots:
+        material: NETHERITE_BOOTS
+        enchantments: { protection: 4, unbreaking: 3, feather_falling: 4, depth_strider: 3 }
+      main-hand:
+        material: NETHERITE_SWORD
+        enchantments: { sharpness: 5, unbreaking: 3, knockback: 1 }
+      off-hand:
+        material: SHIELD
+        enchantments: { unbreaking: 3 }
+    attributes:
+      max-health: 40.0
+      attack-damage: 9.0
+      armor: 20.0
+      armor-toughness: 12.0
+      knockback-resistance: 0.4
+      movement-speed: 0.3
+      follow-range: 40.0
+      attack-knockback: 0.5
+    # potion effect id -> amplifier (0 = level I). Applied for the whole duration.
+    effects:
+      speed: 0
+      fire_resistance: 0
+
+  # --------------------------------------------------------------- Unbreaking II
+  '2':
+    display-name: "Veteran Guardian"
+    count: 5
+    duration-seconds: 300
+    targeting: DEFEND
+    entity-type: WITHER_SKELETON
+    scale: 1.0
+    equipment:
+      helmet:
+        material: NETHERITE_HELMET
+        enchantments: { protection: 4, unbreaking: 3 }
+      chestplate:
+        material: NETHERITE_CHESTPLATE
+        enchantments: { protection: 4, unbreaking: 3 }
+      leggings:
+        material: NETHERITE_LEGGINGS
+        enchantments: { protection: 4, unbreaking: 3 }
+      boots:
+        material: NETHERITE_BOOTS
+        enchantments: { protection: 4, unbreaking: 3, feather_falling: 4, depth_strider: 3 }
+      main-hand:
+        material: NETHERITE_SWORD
+        enchantments: { sharpness: 5, unbreaking: 3, knockback: 2 }
+      off-hand:
+        material: SHIELD
+        enchantments: { unbreaking: 3 }
+    attributes:
+      max-health: 50.0
+      attack-damage: 11.0
+      armor: 20.0
+      armor-toughness: 12.0
+      knockback-resistance: 0.6
+      movement-speed: 0.32
+      follow-range: 48.0
+      attack-knockback: 0.6
+    effects:
+      speed: 1
+      fire_resistance: 0
+
+  # -------------------------------------------------------------- Unbreaking III
+  '3':
+    display-name: "Warlord Guardian"
+    count: 5
+    duration-seconds: 300
+    # Unbreaking III is the aggressive tier: anything the owner hits, or that
+    # hits the owner, gets swarmed.
+    targeting: ASSIST
+    entity-type: WITHER_SKELETON
+    scale: 1.0
+    equipment:
+      helmet:
+        material: NETHERITE_HELMET
+        enchantments: { protection: 4, unbreaking: 3 }
+      chestplate:
+        material: NETHERITE_CHESTPLATE
+        enchantments: { protection: 4, unbreaking: 3 }
+      leggings:
+        material: NETHERITE_LEGGINGS
+        enchantments: { protection: 4, unbreaking: 3 }
+      boots:
+        material: NETHERITE_BOOTS
+        enchantments: { protection: 4, unbreaking: 3, feather_falling: 4, depth_strider: 3 }
+      main-hand:
+        material: NETHERITE_SWORD
+        enchantments: { sharpness: 5, unbreaking: 3, fire_aspect: 2, knockback: 2 }
+      off-hand:
+        material: SHIELD
+        enchantments: { unbreaking: 3 }
+    attributes:
+      max-health: 60.0
+      attack-damage: 13.0
+      armor: 20.0
+      armor-toughness: 12.0
+      knockback-resistance: 0.8
+      movement-speed: 0.34
+      follow-range: 56.0
+      attack-knockback: 0.8
+    effects:
+      speed: 1
+      strength: 0
+      fire_resistance: 0
+
+messages:
+  prefix: "&8[&cGuardians&8] &r"
+  summoned: "&f{count} &7{tier}s have answered your totem. &8({duration})"
+  expired: "&7Your guardians fade back into the dark."
+  wiped: "&7Your guardians have fallen."
+  owner-died: "&7Your guardians vanish with you."
+  replaced: "&7Your previous guardians dissolve."
+  despawned: "&7Your guardians were dismissed."
+  cooldown: "&7You cannot summon guardians for another &f{seconds}s&7."
+  already-active: "&7Your guardians are still fighting."
+  world-disabled: "&7Guardians cannot be summoned in this world."
+  no-permission: "&cYou do not have permission to do that."
+  action-bar: "&c⚔ &7Guardians &8[&f{count}&8] &7{time}"
+  targeting-defend: "They strike back at anyone who attacks you."
+  targeting-assist: "They strike anyone you attack, and anyone who attacks you."
