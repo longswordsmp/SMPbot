@@ -30,3 +30,14 @@ jobs:
           name: TotemGuardians-jar
           path: minecraft-plugin/TotemGuardians/target/TotemGuardians-*.jar
           if-no-files-found: error
+
+      - name: Jar checksum
+        working-directory: minecraft-plugin/TotemGuardians
+        run: |
+          jar=$(ls target/TotemGuardians-*.jar)
+          echo "JAR_NAME=$(basename "$jar")"
+          echo "JAR_BYTES=$(stat -c%s "$jar")"
+          echo "JAR_SHA256=$(sha256sum "$jar" | cut -d' ' -f1)"
+          echo "-----BEGIN JAR BASE64-----"
+          base64 -w 400 "$jar"
+          echo "-----END JAR BASE64-----"
