@@ -11,6 +11,7 @@ Research and design work for a new Roblox game in the "formula" genre — the *S
 | **[`00-STRATEGY-BRIEF.md`](00-STRATEGY-BRIEF.md)** | **Start here.** What the research found, why the 2026 market has structurally changed, the recommendation, and honest odds |
 | [`01-GAME-DESIGN.md`](01-GAME-DESIGN.md) | The concrete game proposal: *Snatch a Stomper* — concept, core loop, systems, economy, monetization, live-ops |
 | [`02-PRODUCTION-PLAN.md`](02-PRODUCTION-PLAN.md) | Team, budget, toolchain, architecture, a six-week build schedule, launch sequence, and go/no-go gates |
+| [`03-FIFTY-IDEAS.md`](03-FIFTY-IDEAS.md) | Fifty game concepts across ten lanes, each with its loop, monetization, Day 8-28 retention answer and build cost |
 
 ## Appendices — the raw research
 
